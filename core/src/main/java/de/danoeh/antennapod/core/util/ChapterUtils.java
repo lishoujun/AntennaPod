@@ -1,30 +1,31 @@
 package de.danoeh.antennapod.core.util;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+import android.content.ContentResolver;
+import android.content.Context;
+import android.net.Uri;
 import android.util.Log;
-
-import java.util.zip.CheckedOutputStream;
-import org.apache.commons.io.IOUtils;
-
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URL;
-import java.util.Collections;
-import java.util.List;
-
-import de.danoeh.antennapod.core.feed.Chapter;
+import androidx.annotation.NonNull;
+import de.danoeh.antennapod.model.feed.Chapter;
+import de.danoeh.antennapod.core.feed.ChapterMerger;
+import de.danoeh.antennapod.model.feed.FeedMedia;
+import de.danoeh.antennapod.core.service.download.AntennapodHttpClient;
+import de.danoeh.antennapod.core.storage.DBReader;
 import de.danoeh.antennapod.core.util.comparator.ChapterStartTimeComparator;
 import de.danoeh.antennapod.core.util.id3reader.ChapterReader;
 import de.danoeh.antennapod.core.util.id3reader.ID3ReaderException;
-import de.danoeh.antennapod.core.util.playback.Playable;
+import de.danoeh.antennapod.model.playback.Playable;
 import de.danoeh.antennapod.core.util.vorbiscommentreader.VorbisCommentChapterReader;
 import de.danoeh.antennapod.core.util.vorbiscommentreader.VorbisCommentReaderException;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.apache.commons.io.input.CountingInputStream;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Utility class for getting chapter data from media files.
@@ -49,90 +50,84 @@ public class ChapterUtils {
         return chapters.size() - 1;
     }
 
-    public static void loadChaptersFromStreamUrl(Playable media) {
-        ChapterUtils.readID3ChaptersFromPlayableStreamUrl(media);
-        if (media.getChapters() == null) {
-            ChapterUtils.readOggChaptersFromPlayableStreamUrl(media);
-        }
-    }
-
-    public static void loadChaptersFromFileUrl(Playable media) {
-        if (!media.localFileAvailable()) {
-            Log.e(TAG, "Could not load chapters from file url: local file not available");
+    public static void loadChapters(Playable playable, Context context) {
+        if (playable.getChapters() != null) {
+            // Already loaded
             return;
         }
-        ChapterUtils.readID3ChaptersFromPlayableFileUrl(media);
-        if (media.getChapters() == null) {
-            ChapterUtils.readOggChaptersFromPlayableFileUrl(media);
-        }
-    }
 
-    /**
-     * Uses the download URL of a media object of a feeditem to read its ID3
-     * chapters.
-     */
-    private static void readID3ChaptersFromPlayableStreamUrl(Playable p) {
-        if (p == null || p.getStreamUrl() == null) {
-            Log.e(TAG, "Unable to read ID3 chapters: media or download URL was null");
-            return;
-        }
-        Log.d(TAG, "Reading id3 chapters from item " + p.getEpisodeTitle());
-        CountingInputStream in = null;
-        try {
-            URL url = new URL(p.getStreamUrl());
-            in = new CountingInputStream(url.openStream());
-            List<Chapter> chapters = readChaptersFrom(in);
-            if (!chapters.isEmpty()) {
-                p.setChapters(chapters);
+        List<Chapter> chaptersFromDatabase = null;
+        if (playable instanceof FeedMedia) {
+            FeedMedia feedMedia = (FeedMedia) playable;
+            if (feedMedia.getItem() == null) {
+                feedMedia.setItem(DBReader.getFeedItem(feedMedia.getItemId()));
             }
-            Log.i(TAG, "Chapters loaded");
-        } catch (IOException | ID3ReaderException e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-        } finally {
-            IOUtils.closeQuietly(in);
+            if (feedMedia.getItem().hasChapters()) {
+                chaptersFromDatabase = DBReader.loadChaptersOfFeedItem(feedMedia.getItem());
+            }
+        }
+
+        List<Chapter> chaptersFromMediaFile = ChapterUtils.loadChaptersFromMediaFile(playable, context);
+        List<Chapter> chapters = ChapterMerger.merge(chaptersFromDatabase, chaptersFromMediaFile);
+        if (chapters == null) {
+            // Do not try loading again. There are no chapters.
+            playable.setChapters(Collections.emptyList());
+        } else {
+            playable.setChapters(chapters);
         }
     }
 
-    /**
-     * Uses the file URL of a media object of a feeditem to read its ID3
-     * chapters.
-     */
-    private static void readID3ChaptersFromPlayableFileUrl(Playable p) {
-        if (p == null || !p.localFileAvailable() || p.getLocalMediaUrl() == null) {
-            return;
-        }
-        Log.d(TAG, "Reading id3 chapters from item " + p.getEpisodeTitle());
-        File source = new File(p.getLocalMediaUrl());
-        if (!source.exists()) {
-            Log.e(TAG, "Unable to read id3 chapters: Source doesn't exist");
-            return;
+    public static List<Chapter> loadChaptersFromMediaFile(Playable playable, Context context) {
+        try (CountingInputStream in = openStream(playable, context)) {
+            List<Chapter> chapters = readId3ChaptersFrom(in);
+            if (!chapters.isEmpty()) {
+                Log.i(TAG, "Chapters loaded");
+                return chapters;
+            }
+        } catch (IOException | ID3ReaderException e) {
+            Log.e(TAG, "Unable to load ID3 chapters: " + e.getMessage());
         }
 
-        CountingInputStream in = null;
-        try {
-            in = new CountingInputStream(new BufferedInputStream(new FileInputStream(source)));
-            List<Chapter> chapters = readChaptersFrom(in);
+        try (CountingInputStream in = openStream(playable, context)) {
+            List<Chapter> chapters = readOggChaptersFromInputStream(in);
             if (!chapters.isEmpty()) {
-                p.setChapters(chapters);
+                Log.i(TAG, "Chapters loaded");
+                return chapters;
             }
-            Log.i(TAG, "Chapters loaded");
-        } catch (IOException | ID3ReaderException e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-        } finally {
-            IOUtils.closeQuietly(in);
+        } catch (IOException | VorbisCommentReaderException e) {
+            Log.e(TAG, "Unable to load vorbis chapters: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static CountingInputStream openStream(Playable playable, Context context) throws IOException {
+        if (playable.localFileAvailable()) {
+            if (playable.getLocalMediaUrl() == null) {
+                throw new IOException("No local url");
+            }
+            File source = new File(playable.getLocalMediaUrl());
+            if (!source.exists()) {
+                throw new IOException("Local file does not exist");
+            }
+            return new CountingInputStream(new FileInputStream(source));
+        } else if (playable.getStreamUrl().startsWith(ContentResolver.SCHEME_CONTENT)) {
+            Uri uri = Uri.parse(playable.getStreamUrl());
+            return new CountingInputStream(context.getContentResolver().openInputStream(uri));
+        } else {
+            Request request = new Request.Builder().url(playable.getStreamUrl()).build();
+            Response response = AntennapodHttpClient.getHttpClient().newCall(request).execute();
+            if (response.body() == null) {
+                throw new IOException("Body is null");
+            }
+            return new CountingInputStream(response.body().byteStream());
         }
     }
 
     @NonNull
-    private static List<Chapter> readChaptersFrom(CountingInputStream in) throws IOException, ID3ReaderException {
-        ChapterReader reader = new ChapterReader();
-        reader.readInputStream(in);
+    private static List<Chapter> readId3ChaptersFrom(CountingInputStream in) throws IOException, ID3ReaderException {
+        ChapterReader reader = new ChapterReader(in);
+        reader.readInputStream();
         List<Chapter> chapters = reader.getChapters();
-
-        if (chapters == null) {
-            Log.i(TAG, "ChapterReader could not find any ID3 chapters");
-            return Collections.emptyList();
-        }
         Collections.sort(chapters, new ChapterStartTimeComparator());
         enumerateEmptyChapterTitles(chapters);
         if (!chaptersValid(chapters)) {
@@ -142,63 +137,20 @@ public class ChapterUtils {
         return chapters;
     }
 
-    private static void readOggChaptersFromPlayableStreamUrl(Playable media) {
-        if (media == null || !media.streamAvailable()) {
-            return;
+    @NonNull
+    private static List<Chapter> readOggChaptersFromInputStream(InputStream input) throws VorbisCommentReaderException {
+        VorbisCommentChapterReader reader = new VorbisCommentChapterReader();
+        reader.readInputStream(input);
+        List<Chapter> chapters = reader.getChapters();
+        if (chapters == null) {
+            return Collections.emptyList();
         }
-        InputStream input = null;
-        try {
-            URL url = new URL(media.getStreamUrl());
-            input = url.openStream();
-            if (input != null) {
-                readOggChaptersFromInputStream(media, input);
-            }
-        } catch (IOException e) {
-            Log.e(TAG, Log.getStackTraceString(e));
-        } finally {
-            IOUtils.closeQuietly(input);
+        Collections.sort(chapters, new ChapterStartTimeComparator());
+        enumerateEmptyChapterTitles(chapters);
+        if (chaptersValid(chapters)) {
+            return chapters;
         }
-    }
-
-    private static void readOggChaptersFromPlayableFileUrl(Playable media) {
-        if (media == null || media.getLocalMediaUrl() == null) {
-            return;
-        }
-        File source = new File(media.getLocalMediaUrl());
-        if (source.exists()) {
-            InputStream input = null;
-            try {
-                input = new BufferedInputStream(new FileInputStream(source));
-                readOggChaptersFromInputStream(media, input);
-            } catch (FileNotFoundException e) {
-                Log.e(TAG, Log.getStackTraceString(e));
-            } finally {
-                IOUtils.closeQuietly(input);
-            }
-        }
-    }
-
-    private static void readOggChaptersFromInputStream(Playable p, InputStream input) {
-        Log.d(TAG, "Trying to read chapters from item with title " + p.getEpisodeTitle());
-        try {
-            VorbisCommentChapterReader reader = new VorbisCommentChapterReader();
-            reader.readInputStream(input);
-            List<Chapter> chapters = reader.getChapters();
-            if (chapters == null) {
-                Log.i(TAG, "ChapterReader could not find any Ogg vorbis chapters");
-                return;
-            }
-            Collections.sort(chapters, new ChapterStartTimeComparator());
-            enumerateEmptyChapterTitles(chapters);
-            if (chaptersValid(chapters)) {
-                p.setChapters(chapters);
-                Log.i(TAG, "Chapters loaded");
-            } else {
-                Log.e(TAG, "Chapter data was invalid");
-            }
-        } catch (VorbisCommentReaderException e) {
-            e.printStackTrace();
-        }
+        return Collections.emptyList();
     }
 
     /**
@@ -224,5 +176,4 @@ public class ChapterUtils {
         }
         return true;
     }
-
 }

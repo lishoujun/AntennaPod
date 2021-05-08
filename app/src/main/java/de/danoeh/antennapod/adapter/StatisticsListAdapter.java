@@ -50,7 +50,7 @@ public abstract class StatisticsListAdapter extends RecyclerView.Adapter<Recycle
         if (viewType == TYPE_HEADER) {
             View view = inflater.inflate(R.layout.statistics_listitem_total, parent, false);
             TextView totalText = view.findViewById(R.id.total_description);
-            totalText.setText(getHeaderCaptionResourceId());
+            totalText.setText(getHeaderCaption());
             return new HeaderHolder(view);
         }
         return new StatisticsHolder(inflater.inflate(R.layout.statistics_listitem, parent, false));
@@ -66,7 +66,7 @@ public abstract class StatisticsListAdapter extends RecyclerView.Adapter<Recycle
             StatisticsHolder holder = (StatisticsHolder) h;
             StatisticsItem statsItem = statisticsData.get(position - 1);
             Glide.with(context)
-                    .load(statsItem.feed.getImageLocation())
+                    .load(statsItem.feed.getImageUrl())
                     .apply(new RequestOptions()
                             .placeholder(R.color.light_gray)
                             .error(R.color.light_gray)
@@ -113,7 +113,7 @@ public abstract class StatisticsListAdapter extends RecyclerView.Adapter<Recycle
         }
     }
 
-    abstract int getHeaderCaptionResourceId();
+    abstract String getHeaderCaption();
 
     abstract String getHeaderValue();
 

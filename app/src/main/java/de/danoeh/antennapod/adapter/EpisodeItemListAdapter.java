@@ -10,7 +10,7 @@ import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.activity.MainActivity;
-import de.danoeh.antennapod.core.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedItem;
 import de.danoeh.antennapod.core.util.FeedItemUtil;
 import de.danoeh.antennapod.fragment.ItemPagerFragment;
 import de.danoeh.antennapod.menuhandler.FeedItemMenuHandler;
@@ -84,6 +84,19 @@ public class EpisodeItemListAdapter extends RecyclerView.Adapter<EpisodeItemView
     }
 
     protected void afterBindViewHolder(EpisodeItemViewHolder holder, int pos) {
+    }
+
+    @Override
+    public void onViewRecycled(@NonNull EpisodeItemViewHolder holder) {
+        super.onViewRecycled(holder);
+        // Set all listeners to null. This is required to prevent leaking fragments that have set a listener.
+        // Activity -> recycledViewPool -> EpisodeItemViewHolder -> Listener -> Fragment (can not be garbage collected)
+        holder.itemView.setOnClickListener(null);
+        holder.itemView.setOnCreateContextMenuListener(null);
+        holder.itemView.setOnLongClickListener(null);
+        holder.secondaryActionButton.setOnClickListener(null);
+        holder.dragHandle.setOnTouchListener(null);
+        holder.coverHolder.setOnTouchListener(null);
     }
 
     /**

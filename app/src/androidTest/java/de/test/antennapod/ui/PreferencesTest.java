@@ -3,23 +3,13 @@ package de.test.antennapod.ui;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
-import android.preference.PreferenceManager;
+
 import androidx.annotation.StringRes;
+import androidx.preference.PreferenceManager;
+import androidx.test.espresso.matcher.RootMatchers;
 import androidx.test.filters.LargeTest;
 import androidx.test.rule.ActivityTestRule;
-import com.google.android.material.snackbar.Snackbar;
-import de.danoeh.antennapod.R;
-import de.danoeh.antennapod.activity.PreferenceActivity;
-import de.danoeh.antennapod.core.preferences.UserPreferences;
-import de.danoeh.antennapod.core.preferences.UserPreferences.EnqueueLocation;
-import de.danoeh.antennapod.core.storage.APCleanupAlgorithm;
-import de.danoeh.antennapod.core.storage.APNullCleanupAlgorithm;
-import de.danoeh.antennapod.core.storage.APQueueCleanupAlgorithm;
-import de.danoeh.antennapod.core.storage.EpisodeCleanupAlgorithm;
-import de.danoeh.antennapod.fragment.EpisodesFragment;
-import de.danoeh.antennapod.fragment.QueueFragment;
-import de.danoeh.antennapod.fragment.SubscriptionFragment;
-import de.test.antennapod.EspressoTestUtils;
+
 import org.awaitility.Awaitility;
 import org.junit.Before;
 import org.junit.Rule;
@@ -28,10 +18,24 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
+import de.danoeh.antennapod.R;
+import de.danoeh.antennapod.activity.PreferenceActivity;
+import de.danoeh.antennapod.core.preferences.UserPreferences;
+import de.danoeh.antennapod.core.preferences.UserPreferences.EnqueueLocation;
+import de.danoeh.antennapod.core.storage.APCleanupAlgorithm;
+import de.danoeh.antennapod.core.storage.APNullCleanupAlgorithm;
+import de.danoeh.antennapod.core.storage.APQueueCleanupAlgorithm;
+import de.danoeh.antennapod.core.storage.EpisodeCleanupAlgorithm;
+import de.danoeh.antennapod.core.storage.ExceptFavoriteCleanupAlgorithm;
+import de.danoeh.antennapod.fragment.EpisodesFragment;
+import de.danoeh.antennapod.fragment.QueueFragment;
+import de.danoeh.antennapod.fragment.SubscriptionFragment;
+import de.test.antennapod.EspressoTestUtils;
+
+import static androidx.test.espresso.Espresso.onData;
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.action.ViewActions.replaceText;
-import static androidx.test.espresso.action.ViewActions.scrollTo;
 import static androidx.test.espresso.action.ViewActions.swipeDown;
 import static androidx.test.espresso.action.ViewActions.swipeUp;
 import static androidx.test.espresso.assertion.ViewAssertions.doesNotExist;
@@ -45,28 +49,32 @@ import static androidx.test.espresso.matcher.ViewMatchers.withText;
 import static de.test.antennapod.EspressoTestUtils.clickPreference;
 import static de.test.antennapod.EspressoTestUtils.waitForView;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static junit.framework.TestCase.assertTrue;
-import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.anything;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.not;
+import static org.junit.Assert.assertTrue;
 
 @LargeTest
 public class PreferencesTest {
     private Resources res;
 
     @Rule
-    public ActivityTestRule<PreferenceActivity> mActivityRule = new ActivityTestRule<>(PreferenceActivity.class, false, false);
+    public ActivityTestRule<PreferenceActivity> activityTestRule =
+            new ActivityTestRule<>(PreferenceActivity.class,
+                    false,
+                    false);
+
 
     @Before
     public void setUp() {
         EspressoTestUtils.clearDatabase();
         EspressoTestUtils.clearPreferences();
-        mActivityRule.launchActivity(new Intent());
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(mActivityRule.getActivity());
+        activityTestRule.launchActivity(new Intent());
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activityTestRule.getActivity());
         prefs.edit().putBoolean(UserPreferences.PREF_ENABLE_AUTODL, true).commit();
 
-        res = mActivityRule.getActivity().getResources();
-        UserPreferences.init(mActivityRule.getActivity());
+        res = activityTestRule.getActivity().getResources();
+        UserPreferences.init(activityTestRule.getActivity());
     }
 
     @Test
@@ -235,12 +243,10 @@ public class PreferencesTest {
     @Test
     public void testPlaybackSpeeds() {
         clickPreference(R.string.playback_pref);
-        clickPreference(R.string.media_player);
-        onView(withText(R.string.media_player_exoplayer)).perform(click());
-        clickPreference(R.string.pref_playback_speed_title);
-        onView(isRoot()).perform(waitForView(withText("0.50"), 1000));
-        onView(withText("0.50")).check(matches(isDisplayed()));
-        onView(withText(R.string.cancel_label)).perform(click());
+        clickPreference(R.string.playback_speed);
+        onView(isRoot()).perform(waitForView(withText("0.75"), 1000));
+        onView(withText("0.75")).check(matches(isDisplayed()));
+        onView(withText(R.string.close_label)).perform(click());
     }
 
     @Test
@@ -258,8 +264,10 @@ public class PreferencesTest {
     @Test
     public void testDisableUpdateInterval() {
         clickPreference(R.string.network_pref);
-        onView(withText(R.string.pref_autoUpdateIntervallOrTime_title)).perform(click());
-        onView(withText(R.string.pref_autoUpdateIntervallOrTime_Disable)).perform(click());
+        clickPreference(R.string.feed_refresh_title);
+        onView(withText(R.string.feed_refresh_never)).perform(click());
+        onView(withId(R.id.disableRadioButton)).perform(click());
+        onView(withText(R.string.confirm_label)).perform(click());
         Awaitility.await().atMost(1000, MILLISECONDS)
                 .until(() -> UserPreferences.getUpdateInterval() == 0);
     }
@@ -267,12 +275,14 @@ public class PreferencesTest {
     @Test
     public void testSetUpdateInterval() {
         clickPreference(R.string.network_pref);
-        clickPreference(R.string.pref_autoUpdateIntervallOrTime_title);
-        onView(withText(R.string.pref_autoUpdateIntervallOrTime_Interval)).perform(click());
-        String search = "12 " + res.getString(R.string.pref_update_interval_hours_plural);
-        onView(withText(search)).perform(click());
+        clickPreference(R.string.feed_refresh_title);
+        onView(withId(R.id.intervalRadioButton)).perform(click());
+        onView(withId(R.id.spinner)).perform(click());
+        int position = 1; // an arbitrary position
+        onData(anything()).inRoot(RootMatchers.isPlatformPopup()).atPosition(position).perform(click());
+        onView(withText(R.string.confirm_label)).perform(click());
         Awaitility.await().atMost(1000, MILLISECONDS)
-                .until(() -> UserPreferences.getUpdateInterval() == TimeUnit.HOURS.toMillis(12));
+                .until(() -> UserPreferences.getUpdateInterval() == TimeUnit.HOURS.toMillis(2));
     }
 
     @Test
@@ -374,6 +384,17 @@ public class PreferencesTest {
         clickPreference(R.string.pref_automatic_download_on_battery_title);
         Awaitility.await().atMost(1000, MILLISECONDS)
                 .until(() -> enableAutodownloadOnBattery == UserPreferences.isEnableAutodownloadOnBattery());
+    }
+
+    @Test
+    public void testEpisodeCleanupFavoriteOnly() {
+        clickPreference(R.string.network_pref);
+        onView(withText(R.string.pref_automatic_download_title)).perform(click());
+        onView(withText(R.string.pref_episode_cleanup_title)).perform(click());
+        onView(isRoot()).perform(waitForView(withText(R.string.episode_cleanup_except_favorite_removal), 1000));
+        onView(withText(R.string.episode_cleanup_except_favorite_removal)).perform(click());
+        Awaitility.await().atMost(1000, MILLISECONDS)
+                .until(() -> UserPreferences.getEpisodeCleanupAlgorithm() instanceof ExceptFavoriteCleanupAlgorithm);
     }
 
     @Test

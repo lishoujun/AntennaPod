@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.util.Log;
 import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MenuItem;
 
 import androidx.annotation.NonNull;
@@ -15,13 +14,13 @@ import java.util.Set;
 
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.core.dialog.ConfirmationDialog;
-import de.danoeh.antennapod.core.feed.Feed;
+import de.danoeh.antennapod.model.feed.Feed;
 import de.danoeh.antennapod.core.storage.DBTasks;
 import de.danoeh.antennapod.core.storage.DBWriter;
 import de.danoeh.antennapod.core.storage.DownloadRequestException;
 import de.danoeh.antennapod.core.util.IntentUtils;
 import de.danoeh.antennapod.core.util.ShareUtils;
-import de.danoeh.antennapod.core.util.SortOrder;
+import de.danoeh.antennapod.model.feed.SortOrder;
 import de.danoeh.antennapod.dialog.FilterDialog;
 import de.danoeh.antennapod.dialog.IntraFeedSortDialog;
 
@@ -34,11 +33,6 @@ public class FeedMenuHandler {
 
     private static final String TAG = "FeedMenuHandler";
 
-    public static boolean onCreateOptionsMenu(MenuInflater inflater, Menu menu) {
-        inflater.inflate(R.menu.feedlist, menu);
-        return true;
-    }
-
     public static boolean onPrepareOptionsMenu(Menu menu, Feed selectedFeed) {
         if (selectedFeed == null) {
             return true;
@@ -50,6 +44,10 @@ public class FeedMenuHandler {
         if (StringUtils.isBlank(selectedFeed.getLink())) {
             menu.findItem(R.id.visit_website_item).setVisible(false);
             menu.findItem(R.id.share_link_item).setVisible(false);
+        }
+        if (selectedFeed.isLocalFeed()) {
+            // hide complete submenu "Share..." as both sub menu items are not visible
+            menu.findItem(R.id.share_item).setVisible(false);
         }
 
         return true;

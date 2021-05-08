@@ -8,7 +8,6 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
@@ -18,29 +17,26 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
 import de.danoeh.antennapod.R;
+import de.danoeh.antennapod.activity.MainActivity;
+import de.danoeh.antennapod.menuhandler.MenuItemUtils;
 
-public class EpisodesFragment extends Fragment {
+public class EpisodesFragment extends PagedToolbarFragment {
 
     public static final String TAG = "EpisodesFragment";
     private static final String PREF_LAST_TAB_POSITION = "tab_position";
+    private static final String KEY_UP_ARROW = "up_arrow";
 
     private static final int POS_NEW_EPISODES = 0;
     private static final int POS_ALL_EPISODES = 1;
     private static final int POS_FAV_EPISODES = 2;
     private static final int TOTAL_COUNT = 3;
 
-
     private TabLayout tabLayout;
-    private ViewPager2 viewPager;
-
-    //Mandatory Constructor
-    public EpisodesFragment() {
-    }
+    private boolean displayUpArrow;
 
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setRetainInstance(true);
-        setHasOptionsMenu(true);
     }
 
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -48,9 +44,18 @@ public class EpisodesFragment extends Fragment {
         View rootView = inflater.inflate(R.layout.pager_fragment, container, false);
         Toolbar toolbar = rootView.findViewById(R.id.toolbar);
         toolbar.setTitle(R.string.episodes_label);
-        ((AppCompatActivity) getActivity()).setSupportActionBar(toolbar);
-        viewPager = rootView.findViewById(R.id.viewpager);
+        toolbar.inflateMenu(R.menu.episodes);
+        MenuItemUtils.setupSearchItem(toolbar.getMenu(), (MainActivity) getActivity(), 0, "");
+        displayUpArrow = getParentFragmentManager().getBackStackEntryCount() != 0;
+        if (savedInstanceState != null) {
+            displayUpArrow = savedInstanceState.getBoolean(KEY_UP_ARROW);
+        }
+        ((MainActivity) getActivity()).setupToolbarToggle(toolbar, displayUpArrow);
+
+        ViewPager2 viewPager = rootView.findViewById(R.id.viewpager);
         viewPager.setAdapter(new EpisodesPagerAdapter(this));
+        viewPager.setOffscreenPageLimit(2);
+        super.setupPagedToolbar(toolbar, viewPager);
 
         // Give the TabLayout the ViewPager
         tabLayout = rootView.findViewById(R.id.sliding_tabs);
@@ -87,6 +92,12 @@ public class EpisodesFragment extends Fragment {
         SharedPreferences.Editor editor = prefs.edit();
         editor.putInt(PREF_LAST_TAB_POSITION, tabLayout.getSelectedTabPosition());
         editor.apply();
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putBoolean(KEY_UP_ARROW, displayUpArrow);
+        super.onSaveInstanceState(outState);
     }
 
     static class EpisodesPagerAdapter extends FragmentStateAdapter {

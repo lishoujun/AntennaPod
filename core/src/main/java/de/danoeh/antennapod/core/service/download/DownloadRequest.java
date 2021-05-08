@@ -8,7 +8,7 @@ import android.text.TextUtils;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import de.danoeh.antennapod.core.feed.FeedFile;
+import de.danoeh.antennapod.model.feed.FeedFile;
 import de.danoeh.antennapod.core.util.URLChecker;
 
 public class DownloadRequest implements Parcelable {
@@ -115,7 +115,7 @@ public class DownloadRequest implements Parcelable {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o == null || !(o instanceof DownloadRequest)) return false;
+        if (!(o instanceof DownloadRequest)) return false;
 
         DownloadRequest that = (DownloadRequest) o;
 

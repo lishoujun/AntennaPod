@@ -3,7 +3,6 @@ package de.danoeh.antennapod.fragment.preferences;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -17,16 +16,17 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.FileProvider;
 import androidx.preference.PreferenceFragmentCompat;
 import com.google.android.material.snackbar.Snackbar;
+import de.danoeh.antennapod.PodcastApp;
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.activity.OpmlImportActivity;
 import de.danoeh.antennapod.activity.PreferenceActivity;
-import de.danoeh.antennapod.activity.SplashActivity;
 import de.danoeh.antennapod.asynctask.DocumentFileExportWorker;
 import de.danoeh.antennapod.asynctask.ExportWorker;
 import de.danoeh.antennapod.core.export.ExportWriter;
 import de.danoeh.antennapod.core.export.favorites.FavoritesWriter;
 import de.danoeh.antennapod.core.export.html.HtmlWriter;
 import de.danoeh.antennapod.core.export.opml.OpmlWriter;
+import de.danoeh.antennapod.core.preferences.UserPreferences;
 import de.danoeh.antennapod.core.storage.DatabaseExporter;
 import io.reactivex.Completable;
 import io.reactivex.Observable;
@@ -39,6 +39,7 @@ import java.io.FileOutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class ImportExportPreferencesFragment extends PreferenceFragmentCompat {
     private static final String TAG = "ImportExPrefFragment";
@@ -87,9 +88,7 @@ public class ImportExportPreferencesFragment extends PreferenceFragmentCompat {
     }
 
     private String dateStampFilename(String fname) {
-        return String.format(fname,
-                new SimpleDateFormat("yyyy-MM-dd")
-                       .format(new Date()));
+        return String.format(fname, new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()));
     }
 
     private void setupStorageScreen() {
@@ -209,17 +208,12 @@ public class ImportExportPreferencesFragment extends PreferenceFragmentCompat {
     }
 
     private void showDatabaseImportSuccessDialog() {
-        AlertDialog.Builder d = new AlertDialog.Builder(getContext());
-        d.setMessage(R.string.import_ok);
-        d.setCancelable(false);
-        d.setPositiveButton(android.R.string.ok, (dialogInterface, i) -> {
-            Intent intent = new Intent(getContext(), SplashActivity.class);
-            ComponentName cn = intent.getComponent();
-            Intent mainIntent = Intent.makeRestartActivityTask(cn);
-            startActivity(mainIntent);
-            Runtime.getRuntime().exit(0);
-        });
-        d.show();
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        builder.setTitle(R.string.successful_import_label);
+        builder.setMessage(R.string.import_ok);
+        builder.setCancelable(false);
+        builder.setPositiveButton(android.R.string.ok, (dialogInterface, i) -> PodcastApp.forceRestart());
+        builder.show();
     }
 
     private void showExportSuccessDialog(final String path, final Uri streamUri) {
@@ -275,6 +269,7 @@ public class ImportExportPreferencesFragment extends PreferenceFragmentCompat {
                     .observeOn(AndroidSchedulers.mainThread())
                     .subscribe(() -> {
                         showDatabaseImportSuccessDialog();
+                        UserPreferences.unsetUsageCountingDate();
                         progressDialog.dismiss();
                     }, this::showExportErrorDialog);
         } else if (requestCode == REQUEST_CODE_BACKUP_DATABASE) {

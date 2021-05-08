@@ -1,11 +1,12 @@
 package de.test.antennapod.service.playback;
 
 import android.content.Context;
-import androidx.test.InstrumentationRegistry;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.annotation.UiThreadTest;
 import androidx.test.filters.LargeTest;
 
 import de.danoeh.antennapod.core.preferences.SleepTimerPreferences;
+import de.danoeh.antennapod.core.widget.WidgetUpdater;
 import org.awaitility.Awaitility;
 import org.greenrobot.eventbus.EventBus;
 import org.junit.After;
@@ -19,16 +20,17 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import de.danoeh.antennapod.core.event.QueueEvent;
-import de.danoeh.antennapod.core.feed.Feed;
-import de.danoeh.antennapod.core.feed.FeedItem;
-import de.danoeh.antennapod.core.feed.FeedMedia;
+import de.danoeh.antennapod.model.feed.Feed;
+import de.danoeh.antennapod.model.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.core.service.playback.PlaybackServiceTaskManager;
 import de.danoeh.antennapod.core.storage.DBReader;
 import de.danoeh.antennapod.core.storage.DBWriter;
 import de.danoeh.antennapod.core.storage.PodDBAdapter;
-import de.danoeh.antennapod.core.util.playback.Playable;
+import de.danoeh.antennapod.model.playback.Playable;
 
 import static de.test.antennapod.util.event.FeedItemEventListener.withFeedItemEventListener;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -92,9 +94,9 @@ public class PlaybackServiceTaskManagerTest {
         PlaybackServiceTaskManager pstm = new PlaybackServiceTaskManager(c, defaultPSTM);
         List<FeedItem> testQueue = pstm.getQueue();
         assertNotNull(testQueue);
-        assertTrue(queue.size() == testQueue.size());
+        assertEquals(testQueue.size(), queue.size());
         for (int i = 0; i < queue.size(); i++) {
-            assertTrue(queue.get(i).getId() == testQueue.get(i).getId());
+            assertEquals(testQueue.get(i).getId(), queue.get(i).getId());
         }
         pstm.shutdown();
     }
@@ -114,9 +116,9 @@ public class PlaybackServiceTaskManagerTest {
         assertNotNull(queue);
         testQueue = pstm.getQueue();
         assertNotNull(testQueue);
-        assertTrue(queue.size() == testQueue.size());
+        assertEquals(testQueue.size(), queue.size());
         for (int i = 0; i < queue.size(); i++) {
-            assertTrue(queue.get(i).getId() == testQueue.get(i).getId());
+            assertEquals(testQueue.get(i).getId(), queue.get(i).getId());
         }
         pstm.shutdown();
     }
@@ -171,7 +173,7 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onSleepTimerAlmostExpired() {
+            public void onSleepTimerAlmostExpired(long timeLeft) {
 
             }
 
@@ -186,8 +188,8 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onWidgetUpdaterTick() {
-
+            public WidgetUpdater.WidgetState requestWidgetState() {
+                return null;
             }
 
             @Override
@@ -232,7 +234,7 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onSleepTimerAlmostExpired() {
+            public void onSleepTimerAlmostExpired(long timeLeft) {
 
             }
 
@@ -247,8 +249,9 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onWidgetUpdaterTick() {
+            public WidgetUpdater.WidgetState requestWidgetState() {
                 countDownLatch.countDown();
+                return null;
             }
 
             @Override
@@ -329,7 +332,7 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onSleepTimerAlmostExpired() {
+            public void onSleepTimerAlmostExpired(long timeLeft) {
 
             }
 
@@ -347,8 +350,8 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onWidgetUpdaterTick() {
-
+            public WidgetUpdater.WidgetState requestWidgetState() {
+                return null;
             }
 
             @Override
@@ -375,7 +378,7 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onSleepTimerAlmostExpired() {
+            public void onSleepTimerAlmostExpired(long timeLeft) {
 
             }
 
@@ -390,8 +393,8 @@ public class PlaybackServiceTaskManagerTest {
             }
 
             @Override
-            public void onWidgetUpdaterTick() {
-
+            public WidgetUpdater.WidgetState requestWidgetState() {
+                return null;
             }
 
             @Override
@@ -433,7 +436,7 @@ public class PlaybackServiceTaskManagerTest {
         }
 
         @Override
-        public void onSleepTimerAlmostExpired() {
+        public void onSleepTimerAlmostExpired(long timeLeft) {
 
         }
 
@@ -448,8 +451,8 @@ public class PlaybackServiceTaskManagerTest {
         }
 
         @Override
-        public void onWidgetUpdaterTick() {
-
+        public WidgetUpdater.WidgetState requestWidgetState() {
+            return null;
         }
 
         @Override

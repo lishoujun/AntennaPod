@@ -1,14 +1,14 @@
 package de.test.antennapod.ui;
 
 import android.content.Intent;
-import androidx.test.InstrumentationRegistry;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.espresso.contrib.DrawerActions;
 import androidx.test.espresso.intent.rule.IntentsTestRule;
-import androidx.test.runner.AndroidJUnit4;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.activity.MainActivity;
 import de.danoeh.antennapod.activity.PreferenceActivity;
-import de.danoeh.antennapod.core.feed.Feed;
+import de.danoeh.antennapod.model.feed.Feed;
 import de.danoeh.antennapod.core.preferences.UserPreferences;
 import de.danoeh.antennapod.fragment.DownloadsFragment;
 import de.danoeh.antennapod.fragment.EpisodesFragment;
@@ -30,7 +30,6 @@ import java.util.List;
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.action.ViewActions.longClick;
-import static androidx.test.espresso.action.ViewActions.scrollTo;
 import static androidx.test.espresso.action.ViewActions.swipeUp;
 import static androidx.test.espresso.intent.Intents.intended;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasComponent;
@@ -42,9 +41,9 @@ import static androidx.test.espresso.matcher.ViewMatchers.withText;
 import static de.test.antennapod.EspressoTestUtils.onDrawerItem;
 import static de.test.antennapod.EspressoTestUtils.waitForView;
 import static de.test.antennapod.NthMatcher.first;
-import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.Matchers.allOf;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * User interface tests for MainActivity drawer.
@@ -59,7 +58,7 @@ public class NavigationDrawerTest {
 
     @Before
     public void setUp() throws IOException {
-        uiTestUtils = new UITestUtils(InstrumentationRegistry.getTargetContext());
+        uiTestUtils = new UITestUtils(InstrumentationRegistry.getInstrumentation().getTargetContext());
         uiTestUtils.setup();
 
         EspressoTestUtils.clearPreferences();
@@ -123,7 +122,7 @@ public class NavigationDrawerTest {
         for (int i = 0; i < uiTestUtils.hostedFeeds.size(); i++) {
             Feed f = uiTestUtils.hostedFeeds.get(i);
             openNavDrawer();
-            onDrawerItem(withText(f.getTitle())).perform(scrollTo(), click());
+            onDrawerItem(withText(f.getTitle())).perform(click());
             onView(isRoot()).perform(waitForView(allOf(isDescendantOfA(withId(R.id.appBar)),
                     withText(f.getTitle()), isDisplayed()), 1000));
         }

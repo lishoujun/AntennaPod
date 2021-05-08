@@ -12,7 +12,7 @@ import android.view.ViewGroup;
 import java.util.List;
 
 import de.danoeh.antennapod.R;
-import de.danoeh.antennapod.core.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedItem;
 import de.danoeh.antennapod.core.storage.DBReader;
 import de.danoeh.antennapod.menuhandler.FeedItemMenuHandler;
 import de.danoeh.antennapod.view.viewholder.EpisodeItemViewHolder;
@@ -37,8 +37,10 @@ public class NewEpisodesFragment extends EpisodesListFragment {
     }
 
     @Override
-    public void onPrepareOptionsMenu(Menu menu) {
+    public void onPrepareOptionsMenu(@NonNull Menu menu) {
         super.onPrepareOptionsMenu(menu);
+        menu.findItem(R.id.filter_items).setVisible(false);
+        menu.findItem(R.id.mark_all_read_item).setVisible(false);
         menu.findItem(R.id.remove_all_new_flags_item).setVisible(true);
     }
 

@@ -8,16 +8,16 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import com.yqritc.recyclerviewflexibledivider.HorizontalDividerItemDecoration;
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.adapter.ChaptersListAdapter;
 import de.danoeh.antennapod.core.event.PlaybackPositionEvent;
-import de.danoeh.antennapod.core.feed.Chapter;
+import de.danoeh.antennapod.model.feed.Chapter;
 import de.danoeh.antennapod.core.service.playback.PlayerStatus;
 import de.danoeh.antennapod.core.util.ChapterUtils;
-import de.danoeh.antennapod.core.util.playback.Playable;
+import de.danoeh.antennapod.model.playback.Playable;
 import de.danoeh.antennapod.core.util.playback.PlaybackController;
 import de.danoeh.antennapod.view.EmptyViewHandler;
 import io.reactivex.Maybe;
@@ -45,8 +45,8 @@ public class ChaptersFragment extends Fragment {
         RecyclerView recyclerView = root.findViewById(R.id.recyclerView);
         layoutManager = new LinearLayoutManager(getActivity());
         recyclerView.setLayoutManager(layoutManager);
-        recyclerView.setHasFixedSize(true);
-        recyclerView.addItemDecoration(new HorizontalDividerItemDecoration.Builder(getActivity()).build());
+        recyclerView.addItemDecoration(new DividerItemDecoration(recyclerView.getContext(),
+                layoutManager.getOrientation()));
 
         adapter = new ChaptersListAdapter(getActivity(), pos -> {
             if (controller.getStatus() != PlayerStatus.PLAYING) {
@@ -60,7 +60,7 @@ public class ChaptersFragment extends Fragment {
 
         EmptyViewHandler emptyView = new EmptyViewHandler(getContext());
         emptyView.attachToRecyclerView(recyclerView);
-        emptyView.setIcon(R.attr.ic_bookmark);
+        emptyView.setIcon(R.drawable.ic_bookmark);
         emptyView.setTitle(R.string.no_chapters_head_label);
         emptyView.setMessage(R.string.no_chapters_label);
 
@@ -72,13 +72,7 @@ public class ChaptersFragment extends Fragment {
         super.onStart();
         controller = new PlaybackController(getActivity()) {
             @Override
-            public boolean loadMediaInfo() {
-                ChaptersFragment.this.loadMediaInfo();
-                return true;
-            }
-
-            @Override
-            public void setupGUI() {
+            public void loadMediaInfo() {
                 ChaptersFragment.this.loadMediaInfo();
             }
 
@@ -93,17 +87,12 @@ public class ChaptersFragment extends Fragment {
     }
 
     @Override
-    public void onDestroyView() {
-        super.onDestroyView();
+    public void onStop() {
+        super.onStop();
 
         if (disposable != null) {
             disposable.dispose();
         }
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
         controller.release();
         controller = null;
         EventBus.getDefault().unregister(this);
@@ -112,6 +101,7 @@ public class ChaptersFragment extends Fragment {
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onEventMainThread(PlaybackPositionEvent event) {
         updateChapterSelection(getCurrentChapter(media));
+        adapter.notifyTimeChanged(event.getPosition());
     }
 
     private int getCurrentChapter(Playable media) {
@@ -128,7 +118,7 @@ public class ChaptersFragment extends Fragment {
         disposable = Maybe.create(emitter -> {
             Playable media = controller.getMedia();
             if (media != null) {
-                media.loadChapterMarks();
+                ChapterUtils.loadChapters(media, getContext());
                 emitter.onSuccess(media);
             } else {
                 emitter.onComplete();
@@ -147,7 +137,6 @@ public class ChaptersFragment extends Fragment {
             return;
         }
         adapter.setMedia(media);
-        ((AudioPlayerFragment) getParentFragment()).setHasChapters(adapter.getItemCount() > 0);
         int positionOfCurrentChapter = getCurrentChapter(media);
         updateChapterSelection(positionOfCurrentChapter);
     }

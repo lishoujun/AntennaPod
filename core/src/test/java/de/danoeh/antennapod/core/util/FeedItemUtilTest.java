@@ -7,9 +7,10 @@ import org.junit.runners.Parameterized.Parameters;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 
-import de.danoeh.antennapod.core.feed.Feed;
-import de.danoeh.antennapod.core.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.Feed;
+import de.danoeh.antennapod.model.feed.FeedItem;
 
 import static org.junit.Assert.assertEquals;
 
@@ -55,7 +56,7 @@ public class FeedItemUtilTest {
         FeedItem feedItem = new FeedItem();
         feedItem.setLink(itemLink);
         feedItem.setFeed(feed);
-        feed.setItems(Arrays.asList(feedItem));
+        feed.setItems(Collections.singletonList(feedItem));
         return feedItem;
     }
 }

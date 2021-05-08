@@ -1,92 +1,47 @@
 package de.danoeh.antennapod.fragment.gpodnet;
 
-import android.content.Context;
 import android.content.Intent;
-import android.os.AsyncTask;
 import android.os.Bundle;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
-import androidx.fragment.app.Fragment;
-import androidx.core.view.MenuItemCompat;
-import androidx.appcompat.widget.SearchView;
 import android.util.Log;
 import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuInflater;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.GridView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-
-import java.util.List;
-
+import androidx.fragment.app.Fragment;
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.activity.MainActivity;
 import de.danoeh.antennapod.activity.OnlineFeedViewActivity;
 import de.danoeh.antennapod.adapter.gpodnet.PodcastListAdapter;
 import de.danoeh.antennapod.core.preferences.GpodnetPreferences;
 import de.danoeh.antennapod.core.service.download.AntennapodHttpClient;
-import de.danoeh.antennapod.core.sync.gpoddernet.GpodnetService;
-import de.danoeh.antennapod.core.sync.gpoddernet.GpodnetServiceException;
-import de.danoeh.antennapod.core.sync.gpoddernet.model.GpodnetPodcast;
+import de.danoeh.antennapod.net.sync.gpoddernet.GpodnetService;
+import de.danoeh.antennapod.net.sync.gpoddernet.GpodnetServiceException;
+import de.danoeh.antennapod.net.sync.gpoddernet.model.GpodnetPodcast;
+import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
+
+import java.util.List;
 
 /**
  * Displays a list of GPodnetPodcast-Objects in a GridView
  */
 public abstract class PodcastListFragment extends Fragment {
-    public static final String ARGUMENT_HIDE_TOOLBAR = "hideToolbar";
     private static final String TAG = "PodcastListFragment";
 
     private GridView gridView;
     private ProgressBar progressBar;
     private TextView txtvError;
     private Button butRetry;
-
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setHasOptionsMenu(true);
-    }
-
-    @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        super.onCreateOptionsMenu(menu, inflater);
-        inflater.inflate(R.menu.gpodder_podcasts, menu);
-        MenuItem searchItem = menu.findItem(R.id.action_search);
-        final SearchView sv = (SearchView) MenuItemCompat.getActionView(searchItem);
-        sv.setQueryHint(getString(R.string.gpodnet_search_hint));
-        sv.setOnQueryTextListener(new androidx.appcompat.widget.SearchView.OnQueryTextListener() {
-            @Override
-            public boolean onQueryTextSubmit(String s) {
-                sv.clearFocus();
-                MainActivity activity = (MainActivity)getActivity();
-                if (activity != null) {
-                    activity.loadChildFragment(SearchListFragment.newInstance(s));
-                }
-                return true;
-            }
-
-            @Override
-            public boolean onQueryTextChange(String s) {
-                return false;
-            }
-        });
-    }
+    private Disposable disposable;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View root = inflater.inflate(R.layout.gpodnet_podcast_list, container, false);
-        Toolbar toolbar = root.findViewById(R.id.toolbar);
-        if (getArguments() == null || !getArguments().getBoolean(ARGUMENT_HIDE_TOOLBAR, false)) {
-            toolbar.setTitle(R.string.gpodnet_main_label);
-            ((AppCompatActivity) getActivity()).setSupportActionBar(toolbar);
-        } else {
-            toolbar.setVisibility(View.GONE);
-        }
-
         gridView = root.findViewById(R.id.gridView);
         progressBar = root.findViewById(R.id.progressBar);
         txtvError = root.findViewById(R.id.txtvError);
@@ -104,66 +59,52 @@ public abstract class PodcastListFragment extends Fragment {
         Log.d(TAG, "Selected podcast: " + selection.toString());
         Intent intent = new Intent(getActivity(), OnlineFeedViewActivity.class);
         intent.putExtra(OnlineFeedViewActivity.ARG_FEEDURL, selection.getUrl());
+        intent.putExtra(MainActivity.EXTRA_STARTED_FROM_SEARCH, true);
         startActivity(intent);
     }
 
     protected abstract List<GpodnetPodcast> loadPodcastData(GpodnetService service) throws GpodnetServiceException;
 
     final void loadData() {
-        AsyncTask<Void, Void, List<GpodnetPodcast>> loaderTask = new AsyncTask<Void, Void, List<GpodnetPodcast>>() {
-            volatile Exception exception = null;
-
-            @Override
-            protected List<GpodnetPodcast> doInBackground(Void... params) {
-                try {
+        if (disposable != null) {
+            disposable.dispose();
+        }
+        gridView.setVisibility(View.GONE);
+        progressBar.setVisibility(View.VISIBLE);
+        txtvError.setVisibility(View.GONE);
+        butRetry.setVisibility(View.GONE);
+        disposable = Observable.fromCallable(
+                () -> {
                     GpodnetService service = new GpodnetService(AntennapodHttpClient.getHttpClient(),
-                            GpodnetPreferences.getHostname());
+                            GpodnetPreferences.getHosturl(), GpodnetPreferences.getDeviceID(),
+                            GpodnetPreferences.getUsername(), GpodnetPreferences.getPassword());
                     return loadPodcastData(service);
-                } catch (GpodnetServiceException e) {
-                    exception = e;
-                    e.printStackTrace();
-                    return null;
-                }
-            }
+                })
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(
+                        podcasts -> {
+                            progressBar.setVisibility(View.GONE);
+                            butRetry.setVisibility(View.GONE);
 
-            @Override
-            protected void onPostExecute(List<GpodnetPodcast> gpodnetPodcasts) {
-                super.onPostExecute(gpodnetPodcasts);
-                final Context context = getActivity();
-                if (context != null && gpodnetPodcasts != null && gpodnetPodcasts.size() > 0) {
-                    PodcastListAdapter listAdapter = new PodcastListAdapter(context, 0, gpodnetPodcasts);
-                    gridView.setAdapter(listAdapter);
-                    listAdapter.notifyDataSetChanged();
-
-                    progressBar.setVisibility(View.GONE);
-                    gridView.setVisibility(View.VISIBLE);
-                    txtvError.setVisibility(View.GONE);
-                    butRetry.setVisibility(View.GONE);
-                } else if (context != null && gpodnetPodcasts != null) {
-                    gridView.setVisibility(View.GONE);
-                    progressBar.setVisibility(View.GONE);
-                    txtvError.setText(getString(R.string.search_status_no_results));
-                    txtvError.setVisibility(View.VISIBLE);
-                    butRetry.setVisibility(View.GONE);
-                } else if (context != null) {
-                    gridView.setVisibility(View.GONE);
-                    progressBar.setVisibility(View.GONE);
-                    txtvError.setText(getString(R.string.error_msg_prefix) + exception.getMessage());
-                    txtvError.setVisibility(View.VISIBLE);
-                    butRetry.setVisibility(View.VISIBLE);
-                }
-            }
-
-            @Override
-            protected void onPreExecute() {
-                super.onPreExecute();
-                gridView.setVisibility(View.GONE);
-                progressBar.setVisibility(View.VISIBLE);
-                txtvError.setVisibility(View.GONE);
-                butRetry.setVisibility(View.GONE);
-            }
-        };
-
-        loaderTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+                            if (podcasts.size() > 0) {
+                                PodcastListAdapter listAdapter = new PodcastListAdapter(getContext(), 0, podcasts);
+                                gridView.setAdapter(listAdapter);
+                                listAdapter.notifyDataSetChanged();
+                                gridView.setVisibility(View.VISIBLE);
+                                txtvError.setVisibility(View.GONE);
+                            } else {
+                                gridView.setVisibility(View.GONE);
+                                txtvError.setText(getString(R.string.search_status_no_results));
+                                txtvError.setVisibility(View.VISIBLE);
+                            }
+                        }, error -> {
+                            gridView.setVisibility(View.GONE);
+                            progressBar.setVisibility(View.GONE);
+                            txtvError.setText(getString(R.string.error_msg_prefix) + error.getMessage());
+                            txtvError.setVisibility(View.VISIBLE);
+                            butRetry.setVisibility(View.VISIBLE);
+                            Log.e(TAG, Log.getStackTraceString(error));
+                        });
     }
 }

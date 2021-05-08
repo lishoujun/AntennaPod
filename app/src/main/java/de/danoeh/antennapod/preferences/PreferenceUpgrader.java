@@ -2,15 +2,15 @@ package de.danoeh.antennapod.preferences;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.preference.PreferenceManager;
+import android.view.KeyEvent;
+import androidx.preference.PreferenceManager;
 
 import de.danoeh.antennapod.BuildConfig;
-import de.danoeh.antennapod.CrashReportWriter;
+import de.danoeh.antennapod.error.CrashReportWriter;
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.core.preferences.UserPreferences;
 import de.danoeh.antennapod.core.preferences.UserPreferences.EnqueueLocation;
 import de.danoeh.antennapod.core.util.download.AutoUpdateManager;
-import de.danoeh.antennapod.core.util.gui.NotificationUtils;
 
 public class PreferenceUpgrader {
     private static final String PREF_CONFIGURED_VERSION = "version_code";
@@ -35,6 +35,10 @@ public class PreferenceUpgrader {
 
     private static void upgrade(int oldVersion) {
         if (oldVersion == -1) {
+            //New installation
+            if (UserPreferences.getUsageCountingDateMillis() < 0) {
+                UserPreferences.resetUsageCountingDate();
+            }
             return;
         }
         if (oldVersion < 1070196) {
@@ -88,6 +92,17 @@ public class PreferenceUpgrader {
         }
         if (oldVersion < 1080100) {
             prefs.edit().putString(UserPreferences.PREF_VIDEO_BEHAVIOR, "pip").apply();
+        }
+        if (oldVersion < 2010300) {
+            // Migrate hardware button preferences
+            if (prefs.getBoolean("prefHardwareForwardButtonSkips", false)) {
+                prefs.edit().putString(UserPreferences.PREF_HARDWARE_FORWARD_BUTTON,
+                        String.valueOf(KeyEvent.KEYCODE_MEDIA_NEXT)).apply();
+            }
+            if (prefs.getBoolean("prefHardwarePreviousButtonRestarts", false)) {
+                prefs.edit().putString(UserPreferences.PREF_HARDWARE_PREVIOUS_BUTTON,
+                        String.valueOf(KeyEvent.KEYCODE_MEDIA_PREVIOUS)).apply();
+            }
         }
     }
 }

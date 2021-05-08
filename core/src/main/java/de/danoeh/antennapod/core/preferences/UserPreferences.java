@@ -4,14 +4,15 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Build;
-import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.KeyEvent;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
 import androidx.core.app.NotificationCompat;
+import androidx.preference.PreferenceManager;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -19,22 +20,28 @@ import org.json.JSONException;
 import java.io.File;
 import java.io.IOException;
 import java.net.Proxy;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import de.danoeh.antennapod.core.R;
-import de.danoeh.antennapod.core.feed.MediaType;
+import de.danoeh.antennapod.model.playback.MediaType;
+import de.danoeh.antennapod.core.feed.SubscriptionsFilter;
 import de.danoeh.antennapod.core.service.download.ProxyConfig;
 import de.danoeh.antennapod.core.storage.APCleanupAlgorithm;
+import de.danoeh.antennapod.core.storage.ExceptFavoriteCleanupAlgorithm;
 import de.danoeh.antennapod.core.storage.APNullCleanupAlgorithm;
 import de.danoeh.antennapod.core.storage.APQueueCleanupAlgorithm;
 import de.danoeh.antennapod.core.storage.EpisodeCleanupAlgorithm;
 import de.danoeh.antennapod.core.util.Converter;
-import de.danoeh.antennapod.core.util.SortOrder;
+import de.danoeh.antennapod.model.feed.SortOrder;
 import de.danoeh.antennapod.core.util.download.AutoUpdateManager;
 
 /**
@@ -46,17 +53,16 @@ import de.danoeh.antennapod.core.util.download.AutoUpdateManager;
 public class UserPreferences {
     private UserPreferences(){}
 
-    private static final String IMPORT_DIR = "import/";
-
     private static final String TAG = "UserPreferences";
 
     // User Interface
     public static final String PREF_THEME = "prefTheme";
     public static final String PREF_HIDDEN_DRAWER_ITEMS = "prefHiddenDrawerItems";
-    private static final String PREF_DRAWER_FEED_ORDER = "prefDrawerFeedOrder";
+    public static final String PREF_DRAWER_FEED_ORDER = "prefDrawerFeedOrder";
     private static final String PREF_DRAWER_FEED_COUNTER = "prefDrawerFeedIndicator";
     public static final String PREF_EXPANDED_NOTIFICATION = "prefExpandNotify";
     public static final String PREF_USE_EPISODE_COVER = "prefEpisodeCover";
+    public static final String PREF_SHOW_TIME_LEFT = "showTimeLeft";
     private static final String PREF_PERSISTENT_NOTIFICATION = "prefPersistNotify";
     public static final String PREF_COMPACT_NOTIFICATION_BUTTONS = "prefCompactNotificationButtons";
     public static final String PREF_LOCKSCREEN_BACKGROUND = "prefLockscreenBackground";
@@ -64,6 +70,7 @@ public class UserPreferences {
     private static final String PREF_SHOW_AUTO_DOWNLOAD_REPORT = "prefShowAutoDownloadReport";
     public static final String PREF_BACK_BUTTON_BEHAVIOR = "prefBackButtonBehavior";
     private static final String PREF_BACK_BUTTON_GO_TO_PAGE = "prefBackButtonGoToPage";
+    public static final String PREF_FILTER_FEED = "prefSubscriptionsFilter";
 
     public static final String PREF_QUEUE_KEEP_SORTED = "prefQueueKeepSorted";
     public static final String PREF_QUEUE_KEEP_SORTED_ORDER = "prefQueueKeepSortedOrder";
@@ -72,8 +79,8 @@ public class UserPreferences {
     public static final String PREF_PAUSE_ON_HEADSET_DISCONNECT = "prefPauseOnHeadsetDisconnect";
     public static final String PREF_UNPAUSE_ON_HEADSET_RECONNECT = "prefUnpauseOnHeadsetReconnect";
     private static final String PREF_UNPAUSE_ON_BLUETOOTH_RECONNECT = "prefUnpauseOnBluetoothReconnect";
-    private static final String PREF_HARDWARE_FOWARD_BUTTON_SKIPS = "prefHardwareForwardButtonSkips";
-    private static final String PREF_HARDWARE_PREVIOUS_BUTTON_RESTARTS = "prefHardwarePreviousButtonRestarts";
+    public static final String PREF_HARDWARE_FORWARD_BUTTON = "prefHardwareForwardButton";
+    public static final String PREF_HARDWARE_PREVIOUS_BUTTON = "prefHardwarePreviousButton";
     public static final String PREF_FOLLOW_QUEUE = "prefFollowQueue";
     public static final String PREF_SKIP_KEEPS_EPISODE = "prefSkipKeepsEpisode";
     private static final String PREF_FAVORITE_KEEPS_EPISODE = "prefFavoriteKeepsEpisode";
@@ -111,6 +118,7 @@ public class UserPreferences {
     private static final String PREF_DATA_FOLDER = "prefDataFolder";
     public static final String PREF_IMAGE_CACHE_SIZE = "prefImageCacheSize";
     public static final String PREF_DELETE_REMOVES_FROM_QUEUE = "prefDeleteRemovesFromQueue";
+    public static final String PREF_USAGE_COUNTING_DATE = "prefUsageCounting";
 
     // Mediaplayer
     public static final String PREF_MEDIA_PLAYER = "prefMediaPlayer";
@@ -131,6 +139,7 @@ public class UserPreferences {
     public static final String PREF_CAST_ENABLED = "prefCast"; //Used for enabling Chromecast support
     public static final int EPISODE_CLEANUP_QUEUE = -1;
     public static final int EPISODE_CLEANUP_NULL = -2;
+    public static final int EPISODE_CLEANUP_EXCEPT_FAVORITE = -3;
     public static final int EPISODE_CLEANUP_DEFAULT = 0;
 
     // Constants
@@ -161,7 +170,6 @@ public class UserPreferences {
         UserPreferences.context = context.getApplicationContext();
         UserPreferences.prefs = PreferenceManager.getDefaultSharedPreferences(context);
 
-        createImportDirectory();
         createNoMediaFile();
     }
 
@@ -242,6 +250,12 @@ public class UserPreferences {
         return Integer.parseInt(value);
     }
 
+    public static void setFeedOrder(String selected) {
+        prefs.edit()
+                .putString(PREF_DRAWER_FEED_ORDER, selected)
+                .apply();
+    }
+
     public static int getFeedCounterSetting() {
         String value = prefs.getString(PREF_DRAWER_FEED_COUNTER, "" + FEED_COUNTER_SHOW_NEW);
         return Integer.parseInt(value);
@@ -252,6 +266,23 @@ public class UserPreferences {
      */
     public static boolean getUseEpisodeCoverSetting() {
         return prefs.getBoolean(PREF_USE_EPISODE_COVER, true);
+    }
+
+    /**
+     * @return {@code true} if we should show remaining time or the duration
+     */
+    public static boolean shouldShowRemainingTime() {
+        return prefs.getBoolean(PREF_SHOW_TIME_LEFT, false);
+    }
+
+    /**
+     * Sets the preference for whether we show the remain time, if not show the duration. This will
+     * send out events so the current playing screen, queue and the episode list would refresh
+     *
+     * @return {@code true} if we should show remaining time or the duration
+     */
+    public static void setShowRemainTimeSetting(Boolean showRemain) {
+        prefs.edit().putBoolean(PREF_SHOW_TIME_LEFT, showRemain).apply();
     }
 
     /**
@@ -291,10 +322,30 @@ public class UserPreferences {
      * @return {@code true} if download reports are shown, {@code false}  otherwise
      */
     public static boolean showDownloadReport() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            return true; // System handles notification preferences
+        }
+        return prefs.getBoolean(PREF_SHOW_DOWNLOAD_REPORT, true);
+    }
+
+    /**
+     * Used for migration of the preference to system notification channels.
+     */
+    public static boolean getShowDownloadReportRaw() {
         return prefs.getBoolean(PREF_SHOW_DOWNLOAD_REPORT, true);
     }
 
     public static boolean showAutoDownloadReport() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            return true; // System handles notification preferences
+        }
+        return prefs.getBoolean(PREF_SHOW_AUTO_DOWNLOAD_REPORT, false);
+    }
+
+    /**
+     * Used for migration of the preference to system notification channels.
+     */
+    public static boolean getShowAutoDownloadReportRaw() {
         return prefs.getBoolean(PREF_SHOW_AUTO_DOWNLOAD_REPORT, false);
     }
 
@@ -343,12 +394,14 @@ public class UserPreferences {
         return prefs.getBoolean(PREF_UNPAUSE_ON_BLUETOOTH_RECONNECT, false);
     }
 
-    public static boolean shouldHardwareButtonSkip() {
-        return prefs.getBoolean(PREF_HARDWARE_FOWARD_BUTTON_SKIPS, false);
+    public static int getHardwareForwardButton() {
+        return Integer.parseInt(prefs.getString(PREF_HARDWARE_FORWARD_BUTTON,
+                String.valueOf(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)));
     }
 
-    public static boolean shouldHardwarePreviousButtonRestart() {
-        return prefs.getBoolean(PREF_HARDWARE_PREVIOUS_BUTTON_RESTARTS, false);
+    public static int getHardwarePreviousButton() {
+        return Integer.parseInt(prefs.getString(PREF_HARDWARE_PREVIOUS_BUTTON,
+                String.valueOf(KeyEvent.KEYCODE_MEDIA_REWIND)));
     }
 
 
@@ -414,7 +467,7 @@ public class UserPreferences {
         return prefs.getBoolean(PREF_PLAYBACK_SKIP_SILENCE, false);
     }
 
-    public static float[] getPlaybackSpeedArray() {
+    public static List<Float> getPlaybackSpeedArray() {
         return readPlaybackSpeedArray(prefs.getString(PREF_PLAYBACK_SPEED_ARRAY, null));
     }
 
@@ -628,8 +681,7 @@ public class UserPreferences {
     }
 
     public static boolean isQueueLocked() {
-        return prefs.getBoolean(PREF_QUEUE_LOCKED, false)
-                || isQueueKeepSorted();
+        return prefs.getBoolean(PREF_QUEUE_LOCKED, false);
     }
 
     public static void setFastForwardSecs(int secs) {
@@ -662,10 +714,13 @@ public class UserPreferences {
                 .apply();
     }
 
-    public static void setPlaybackSpeedArray(String[] speeds) {
+    public static void setPlaybackSpeedArray(List<Float> speeds) {
+        DecimalFormatSymbols format = new DecimalFormatSymbols(Locale.US);
+        format.setDecimalSeparator('.');
+        DecimalFormat speedFormat = new DecimalFormat("0.00", format);
         JSONArray jsonArray = new JSONArray();
-        for (String speed : speeds) {
-            jsonArray.put(speed);
+        for (float speed : speeds) {
+            jsonArray.put(speedFormat.format(speed));
         }
         prefs.edit()
              .putString(PREF_PLAYBACK_SPEED_ARRAY, jsonArray.toString())
@@ -716,6 +771,16 @@ public class UserPreferences {
     }
 
     public static boolean gpodnetNotificationsEnabled() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            return true; // System handles notification preferences
+        }
+        return prefs.getBoolean(PREF_GPODNET_NOTIFICATIONS, true);
+    }
+
+    /**
+     * Used for migration of the preference to system notification channels.
+     */
+    public static boolean getGpodnetNotificationsEnabledRaw() {
         return prefs.getBoolean(PREF_GPODNET_NOTIFICATIONS, true);
     }
 
@@ -775,13 +840,13 @@ public class UserPreferences {
         }
     }
 
-    private static float[] readPlaybackSpeedArray(String valueFromPrefs) {
+    private static List<Float> readPlaybackSpeedArray(String valueFromPrefs) {
         if (valueFromPrefs != null) {
             try {
                 JSONArray jsonArray = new JSONArray(valueFromPrefs);
-                float[] selectedSpeeds = new float[jsonArray.length()];
+                List<Float> selectedSpeeds = new ArrayList<>();
                 for (int i = 0; i < jsonArray.length(); i++) {
-                    selectedSpeeds[i] = (float) jsonArray.getDouble(i);
+                    selectedSpeeds.add((float) jsonArray.getDouble(i));
                 }
                 return selectedSpeeds;
             } catch (JSONException e) {
@@ -790,7 +855,7 @@ public class UserPreferences {
             }
         }
         // If this preference hasn't been set yet, return the default options
-        return new float[] { 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+        return Arrays.asList(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f);
     }
 
     public static String getMediaPlayer() {
@@ -826,8 +891,8 @@ public class UserPreferences {
     public static VideoBackgroundBehavior getVideoBackgroundBehavior() {
         switch (prefs.getString(PREF_VIDEO_BEHAVIOR, "pip")) {
             case "stop": return VideoBackgroundBehavior.STOP;
-            case "pip": return VideoBackgroundBehavior.PICTURE_IN_PICTURE;
             case "continue": return VideoBackgroundBehavior.CONTINUE_PLAYING;
+            case "pip": //Deliberate fall-through
             default: return VideoBackgroundBehavior.PICTURE_IN_PICTURE;
         }
     }
@@ -837,7 +902,9 @@ public class UserPreferences {
             return new APNullCleanupAlgorithm();
         }
         int cleanupValue = getEpisodeCleanupValue();
-        if (cleanupValue == EPISODE_CLEANUP_QUEUE) {
+        if (cleanupValue == EPISODE_CLEANUP_EXCEPT_FAVORITE) {
+            return new ExceptFavoriteCleanupAlgorithm();
+        } else if (cleanupValue == EPISODE_CLEANUP_QUEUE) {
             return new APQueueCleanupAlgorithm();
         } else if (cleanupValue == EPISODE_CLEANUP_NULL) {
             return new APNullCleanupAlgorithm();
@@ -914,7 +981,6 @@ public class UserPreferences {
         prefs.edit()
              .putString(PREF_DATA_FOLDER, dir)
              .apply();
-        createImportDirectory();
     }
 
     /**
@@ -930,24 +996,6 @@ public class UserPreferences {
                 e.printStackTrace();
             }
             Log.d(TAG, ".nomedia file created");
-        }
-    }
-
-    /**
-     * Creates the import directory if it doesn't exist and if storage is
-     * available
-     */
-    private static void createImportDirectory() {
-        File importDir = getDataFolder(IMPORT_DIR);
-        if (importDir != null) {
-            if (importDir.exists()) {
-                Log.d(TAG, "Import directory already exists");
-            } else {
-                Log.d(TAG, "Creating import directory");
-                importDir.mkdir();
-            }
-        } else {
-            Log.d(TAG, "Could not access external storage.");
         }
     }
 
@@ -977,11 +1025,11 @@ public class UserPreferences {
 
     public static BackButtonBehavior getBackButtonBehavior() {
         switch (prefs.getString(PREF_BACK_BUTTON_BEHAVIOR, "default")) {
-            case "default": return BackButtonBehavior.DEFAULT;
             case "drawer": return BackButtonBehavior.OPEN_DRAWER;
             case "doubletap": return BackButtonBehavior.DOUBLE_TAP;
             case "prompt": return BackButtonBehavior.SHOW_PROMPT;
             case "page": return BackButtonBehavior.GO_TO_PAGE;
+            case "default": // Deliberate fall-through
             default: return BackButtonBehavior.DEFAULT;
         }
     }
@@ -1051,5 +1099,32 @@ public class UserPreferences {
         prefs.edit()
                 .putString(PREF_QUEUE_KEEP_SORTED_ORDER, sortOrder.name())
                 .apply();
+    }
+
+    public static SubscriptionsFilter getSubscriptionsFilter() {
+        String value = prefs.getString(PREF_FILTER_FEED, "");
+        return new SubscriptionsFilter(value);
+    }
+
+    public static void setSubscriptionsFilter(SubscriptionsFilter value) {
+        prefs.edit()
+                .putString(PREF_FILTER_FEED, value.serialize())
+                .apply();
+    }
+
+    public static long getUsageCountingDateMillis() {
+        return prefs.getLong(PREF_USAGE_COUNTING_DATE, -1);
+    }
+
+    private static void setUsageCountingDateMillis(long value) {
+        prefs.edit().putLong(PREF_USAGE_COUNTING_DATE, value).apply();
+    }
+
+    public static void resetUsageCountingDate() {
+        setUsageCountingDateMillis(Calendar.getInstance().getTimeInMillis());
+    }
+
+    public static void unsetUsageCountingDate() {
+        setUsageCountingDateMillis(-1);
     }
 }

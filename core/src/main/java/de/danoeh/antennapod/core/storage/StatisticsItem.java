@@ -1,6 +1,6 @@
 package de.danoeh.antennapod.core.storage;
 
-import de.danoeh.antennapod.core.feed.Feed;
+import de.danoeh.antennapod.model.feed.Feed;
 
 public class StatisticsItem {
     public final Feed feed;
@@ -36,9 +36,14 @@ public class StatisticsItem {
      */
     public final long totalDownloadSize;
 
+    /**
+     * Stores the number of episodes downloaded.
+     */
+    public final long episodesDownloadCount;
+
     public StatisticsItem(Feed feed, long time, long timePlayed, long timePlayedCountAll,
                           long episodes, long episodesStarted, long episodesStartedIncludingMarked,
-                          long totalDownloadSize) {
+                          long totalDownloadSize, long episodesDownloadCount) {
         this.feed = feed;
         this.time = time;
         this.timePlayed = timePlayed;
@@ -47,5 +52,6 @@ public class StatisticsItem {
         this.episodesStarted = episodesStarted;
         this.episodesStartedIncludingMarked = episodesStartedIncludingMarked;
         this.totalDownloadSize = totalDownloadSize;
+        this.episodesDownloadCount = episodesDownloadCount;
     }
 }

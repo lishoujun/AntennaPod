@@ -3,17 +3,20 @@ package de.danoeh.antennapod.activity;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.graphics.drawable.ColorDrawable;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.AnimationSet;
 import android.view.animation.ScaleAnimation;
+import android.widget.EditText;
 import android.widget.ImageView;
+
 import androidx.core.view.WindowCompat;
 import androidx.appcompat.app.ActionBar;
-import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
 import android.view.Menu;
@@ -33,12 +36,12 @@ import java.lang.ref.WeakReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.danoeh.antennapod.R;
-import de.danoeh.antennapod.core.feed.MediaType;
 import de.danoeh.antennapod.core.preferences.UserPreferences;
 import de.danoeh.antennapod.core.service.playback.PlaybackService;
 import de.danoeh.antennapod.core.service.playback.PlayerStatus;
 import de.danoeh.antennapod.core.util.gui.PictureInPictureUtil;
-import de.danoeh.antennapod.core.util.playback.Playable;
+import de.danoeh.antennapod.model.playback.Playable;
+import de.danoeh.antennapod.ui.appstartintent.MainActivityStarter;
 import de.danoeh.antennapod.view.AspectRatioVideoView;
 
 /**
@@ -84,9 +87,7 @@ public class VideoplayerActivity extends MediaplayerActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (TextUtils.equals(getIntent().getAction(), Intent.ACTION_VIEW)) {
-            playExternalMedia(getIntent(), MediaType.VIDEO);
-        } else if (PlaybackService.isCasting()) {
+        if (PlaybackService.isCasting()) {
             Intent intent = PlaybackService.getPlayerActivityIntent(this);
             if (!intent.getComponent().getClassName().equals(VideoplayerActivity.class.getName())) {
                 destroyingDueToReload = true;
@@ -102,6 +103,7 @@ public class VideoplayerActivity extends MediaplayerActivity {
         if (!PictureInPictureUtil.isInPictureInPictureMode(this)) {
             videoControlsHider.stop();
         }
+        progressIndicator.setVisibility(View.GONE); // Controller released; we will not receive buffering updates
     }
 
     @Override
@@ -130,17 +132,13 @@ public class VideoplayerActivity extends MediaplayerActivity {
     }
 
     @Override
-    protected boolean loadMediaInfo() {
-        if (!super.loadMediaInfo() || controller == null) {
-            return false;
-        }
+    protected void loadMediaInfo() {
+        super.loadMediaInfo();
         Playable media = controller.getMedia();
         if (media != null) {
             getSupportActionBar().setSubtitle(media.getEpisodeTitle());
             getSupportActionBar().setTitle(media.getFeedTitle());
-            return true;
         }
-        return false;
     }
 
     @Override
@@ -187,7 +185,7 @@ public class VideoplayerActivity extends MediaplayerActivity {
             videoControlsHider.stop();
 
             if (System.currentTimeMillis() - lastScreenTap < 300) {
-                if (event.getX() > v.getMeasuredWidth() / 2) {
+                if (event.getX() > v.getMeasuredWidth() / 2.0f) {
                     onFastForward();
                     showSkipAnimation(true);
                 } else {
@@ -224,10 +222,10 @@ public class VideoplayerActivity extends MediaplayerActivity {
 
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) skipAnimationView.getLayoutParams();
         if (isForward) {
-            skipAnimationView.setImageResource(R.drawable.ic_av_fast_forward_white_80dp);
+            skipAnimationView.setImageResource(R.drawable.ic_fast_forward_video_white);
             params.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
         } else {
-            skipAnimationView.setImageResource(R.drawable.ic_av_fast_rewind_white_80dp);
+            skipAnimationView.setImageResource(R.drawable.ic_fast_rewind_video_white);
             params.gravity = Gravity.LEFT | Gravity.CENTER_VERTICAL;
         }
 
@@ -342,7 +340,7 @@ public class VideoplayerActivity extends MediaplayerActivity {
             Log.d(TAG, "ReloadNotification received, switching to Castplayer now");
             destroyingDueToReload = true;
             finish();
-            startActivity(new Intent(this, MainActivity.class).putExtra(MainActivity.EXTRA_OPEN_PLAYER, true));
+            new MainActivityStarter(this).withOpenPlayer().start();
         }
     }
 
@@ -423,7 +421,7 @@ public class VideoplayerActivity extends MediaplayerActivity {
         if (PictureInPictureUtil.supportsPictureInPicture(this)) {
             menu.findItem(R.id.player_go_to_picture_in_picture).setVisible(true);
         }
-        menu.findItem(R.id.audio_controls).setIcon(R.drawable.ic_sliders_white);
+        menu.findItem(R.id.audio_controls).setIcon(R.drawable.ic_sliders);
         return true;
     }
 
@@ -480,4 +478,67 @@ public class VideoplayerActivity extends MediaplayerActivity {
 
     }
 
+
+    //Hardware keyboard support
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        View currentFocus = getCurrentFocus();
+        if (currentFocus instanceof EditText) {
+            return super.onKeyUp(keyCode, event);
+        }
+
+        AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_P: //Fallthrough
+            case KeyEvent.KEYCODE_SPACE:
+                onPlayPause();
+                toggleVideoControlsVisibility();
+                return true;
+            case KeyEvent.KEYCODE_J: //Fallthrough
+            case KeyEvent.KEYCODE_A:
+            case KeyEvent.KEYCODE_COMMA:
+                onRewind();
+                showSkipAnimation(false);
+                return true;
+            case KeyEvent.KEYCODE_K: //Fallthrough
+            case KeyEvent.KEYCODE_D:
+            case KeyEvent.KEYCODE_PERIOD:
+                onFastForward();
+                showSkipAnimation(true);
+                return true;
+            case KeyEvent.KEYCODE_F: //Fallthrough
+            case KeyEvent.KEYCODE_ESCAPE:
+                //Exit fullscreen mode
+                onBackPressed();
+                return true;
+            case KeyEvent.KEYCODE_I:
+                compatEnterPictureInPicture();
+                return true;
+            case KeyEvent.KEYCODE_PLUS: //Fallthrough
+            case KeyEvent.KEYCODE_W:
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                        AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+                return true;
+            case KeyEvent.KEYCODE_MINUS: //Fallthrough
+            case KeyEvent.KEYCODE_S:
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                        AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                return true;
+            case KeyEvent.KEYCODE_M:
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                            AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI);
+                    return true;
+                }
+                break;
+        }
+
+        //Go to x% of video:
+        if (keyCode >= KeyEvent.KEYCODE_0 && keyCode <= KeyEvent.KEYCODE_9) {
+            controller.seekTo((int) (0.1f * (keyCode - KeyEvent.KEYCODE_0) * controller.getDuration()));
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
+    }
 }

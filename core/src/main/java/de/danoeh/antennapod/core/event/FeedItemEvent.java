@@ -9,7 +9,7 @@ import org.apache.commons.lang3.builder.ToStringStyle;
 import java.util.Arrays;
 import java.util.List;
 
-import de.danoeh.antennapod.core.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedItem;
 
 public class FeedItemEvent {
 
@@ -21,7 +21,7 @@ public class FeedItemEvent {
     private final Action action;
     @NonNull public final List<FeedItem> items;
 
-    private FeedItemEvent(Action action, List<FeedItem> items) {
+    private FeedItemEvent(@NonNull Action action, @NonNull List<FeedItem> items) {
         this.action = action;
         this.items = items;
     }
@@ -42,6 +42,7 @@ public class FeedItemEvent {
         return updated(Arrays.asList(items));
     }
 
+    @NonNull
     @Override
     public String toString() {
         return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE)

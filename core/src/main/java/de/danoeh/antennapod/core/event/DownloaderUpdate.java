@@ -5,8 +5,8 @@ import androidx.annotation.NonNull;
 import java.util.Arrays;
 import java.util.List;
 
-import de.danoeh.antennapod.core.feed.Feed;
-import de.danoeh.antennapod.core.feed.FeedMedia;
+import de.danoeh.antennapod.model.feed.Feed;
+import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.core.service.download.Downloader;
 import de.danoeh.antennapod.core.util.LongList;
 
@@ -46,6 +46,7 @@ public class DownloaderUpdate {
         this.mediaIds = mediaIds1.toArray();
     }
 
+    @NonNull
     @Override
     public String toString() {
         return "DownloaderUpdate{" +

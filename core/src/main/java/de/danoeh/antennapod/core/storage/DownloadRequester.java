@@ -17,15 +17,16 @@ import org.apache.commons.io.FilenameUtils;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.danoeh.antennapod.core.BuildConfig;
-import de.danoeh.antennapod.core.feed.Feed;
-import de.danoeh.antennapod.core.feed.FeedFile;
-import de.danoeh.antennapod.core.feed.FeedItem;
-import de.danoeh.antennapod.core.feed.FeedMedia;
+import de.danoeh.antennapod.model.feed.Feed;
+import de.danoeh.antennapod.model.feed.FeedFile;
+import de.danoeh.antennapod.model.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.core.preferences.UserPreferences;
 import de.danoeh.antennapod.core.service.download.DownloadRequest;
 import de.danoeh.antennapod.core.service.download.DownloadService;
@@ -184,16 +185,31 @@ public class DownloadRequester implements DownloadStateProvider {
     }
 
     /**
-     * Downloads a feed
+     * Downloads a feed.
      *
      * @param context The application's environment.
-     * @param feed Feed to download
+     * @param feed Feeds to download
      * @param loadAllPages Set to true to download all pages
      */
     public synchronized void downloadFeed(Context context, Feed feed, boolean loadAllPages,
-                                          boolean force, boolean initiatedByUser)
-            throws DownloadRequestException {
-        if (feedFileValid(feed)) {
+                                           boolean force, boolean initiatedByUser) throws DownloadRequestException {
+        downloadFeeds(context, Collections.singletonList(feed), loadAllPages, force, initiatedByUser);
+    }
+
+    /**
+     * Downloads a list of feeds.
+     *
+     * @param context The application's environment.
+     * @param feeds Feeds to download
+     * @param loadAllPages Set to true to download all pages
+     */
+    public synchronized void downloadFeeds(Context context, List<Feed> feeds, boolean loadAllPages,
+                                          boolean force, boolean initiatedByUser) throws DownloadRequestException {
+        List<DownloadRequest> requests = new ArrayList<>();
+        for (Feed feed : feeds) {
+            if (!feedFileValid(feed)) {
+                continue;
+            }
             String username = (feed.getPreferences() != null) ? feed.getPreferences().getUsername() : null;
             String password = (feed.getPreferences() != null) ? feed.getPreferences().getPassword() : null;
             String lastModified = feed.isPaged() || force ? null : feed.getLastUpdate();
@@ -206,8 +222,11 @@ public class DownloadRequester implements DownloadStateProvider {
                     true, username, password, lastModified, true, args, initiatedByUser
             );
             if (request != null) {
-                download(context, request);
+                requests.add(request);
             }
+        }
+        if (!requests.isEmpty()) {
+            download(context, requests.toArray(new DownloadRequest[0]));
         }
     }
 
@@ -274,7 +293,7 @@ public class DownloadRequester implements DownloadStateProvider {
         }
 
         File dest;
-        if (feedmedia.getFile_url() != null) {
+        if (feedmedia.getFile_url() != null && new File(feedmedia.getFile_url()).exists()) {
             dest = new File(feedmedia.getFile_url());
         } else {
             dest = new File(getMediafilePath(feedmedia), getMediafilename(feedmedia));
@@ -340,7 +359,7 @@ public class DownloadRequester implements DownloadStateProvider {
     /**
      * Checks if feedfile is in the downloads list
      */
-    public synchronized boolean isDownloadingFile(FeedFile item) {
+    public synchronized boolean isDownloadingFile(@NonNull FeedFile item) {
         return item.getDownload_url() != null && downloads.containsKey(item.getDownload_url());
     }
 

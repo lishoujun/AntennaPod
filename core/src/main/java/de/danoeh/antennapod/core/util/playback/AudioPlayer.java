@@ -1,15 +1,16 @@
 package de.danoeh.antennapod.core.util.playback;
 
 import android.content.Context;
-import android.content.SharedPreferences;
-import android.preference.PreferenceManager;
+import androidx.preference.PreferenceManager;
 import android.util.Log;
 import android.view.SurfaceHolder;
 
+import de.danoeh.antennapod.core.ClientConfig;
 import org.antennapod.audio.MediaPlayer;
 
 import de.danoeh.antennapod.core.preferences.UserPreferences;
 
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
@@ -17,10 +18,10 @@ public class AudioPlayer extends MediaPlayer implements IPlayer {
     private static final String TAG = "AudioPlayer";
 
     public AudioPlayer(Context context) {
-        super(context);
+        super(context, true, ClientConfig.USER_AGENT);
         PreferenceManager.getDefaultSharedPreferences(context)
                 .registerOnSharedPreferenceChangeListener((sharedPreferences, key) -> {
-                    if (key.equals(UserPreferences.PREF_MEDIA_PLAYER)) {
+                    if (UserPreferences.PREF_MEDIA_PLAYER.equals(key)) {
                         checkMpi();
                     }
                 });
@@ -63,5 +64,10 @@ public class AudioPlayer extends MediaPlayer implements IPlayer {
     @Override
     public int getSelectedAudioTrack() {
         return -1;
+    }
+
+    @Override
+    public void setDataSource(String streamUrl, String username, String password) throws IOException {
+        setDataSource(streamUrl);
     }
 }

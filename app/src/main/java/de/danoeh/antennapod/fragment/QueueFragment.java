@@ -4,23 +4,25 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.view.ViewCompat;
+import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
 import com.google.android.material.snackbar.Snackbar;
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.activity.MainActivity;
@@ -33,7 +35,7 @@ import de.danoeh.antennapod.core.event.PlaybackPositionEvent;
 import de.danoeh.antennapod.core.event.PlayerStatusEvent;
 import de.danoeh.antennapod.core.event.QueueEvent;
 import de.danoeh.antennapod.core.event.UnreadItemsUpdateEvent;
-import de.danoeh.antennapod.core.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedItem;
 import de.danoeh.antennapod.core.feed.util.PlaybackSpeedUtils;
 import de.danoeh.antennapod.core.preferences.UserPreferences;
 import de.danoeh.antennapod.core.service.download.DownloadService;
@@ -42,7 +44,7 @@ import de.danoeh.antennapod.core.storage.DBWriter;
 import de.danoeh.antennapod.core.storage.DownloadRequester;
 import de.danoeh.antennapod.core.util.Converter;
 import de.danoeh.antennapod.core.util.FeedItemUtil;
-import de.danoeh.antennapod.core.util.SortOrder;
+import de.danoeh.antennapod.model.feed.SortOrder;
 import de.danoeh.antennapod.core.util.download.AutoUpdateManager;
 import de.danoeh.antennapod.dialog.EpisodesApplyActionFragment;
 import de.danoeh.antennapod.menuhandler.FeedItemMenuHandler;
@@ -68,14 +70,17 @@ import static de.danoeh.antennapod.dialog.EpisodesApplyActionFragment.ACTION_REM
 /**
  * Shows all items in the queue.
  */
-public class QueueFragment extends Fragment {
+public class QueueFragment extends Fragment implements Toolbar.OnMenuItemClickListener {
     public static final String TAG = "QueueFragment";
+    private static final String KEY_UP_ARROW = "up_arrow";
 
     private TextView infoBar;
     private EpisodeItemListRecyclerView recyclerView;
     private QueueRecyclerAdapter recyclerAdapter;
     private EmptyViewHandler emptyView;
     private ProgressBar progLoading;
+    private Toolbar toolbar;
+    private boolean displayUpArrow;
 
     private List<FeedItem> queue;
 
@@ -92,7 +97,6 @@ public class QueueFragment extends Fragment {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setRetainInstance(true);
-        setHasOptionsMenu(true);
         prefs = getActivity().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
@@ -136,6 +140,7 @@ public class QueueFragment extends Fragment {
                 recyclerAdapter.notifyItemInserted(event.position);
                 break;
             case SET_QUEUE:
+            case SORTED: //Deliberate fall-through
                 queue = event.items;
                 recyclerAdapter.notifyDataSetChanged();
                 break;
@@ -147,10 +152,6 @@ public class QueueFragment extends Fragment {
                 break;
             case CLEARED:
                 queue.clear();
-                recyclerAdapter.notifyDataSetChanged();
-                break;
-            case SORTED:
-                queue = event.items;
                 recyclerAdapter.notifyDataSetChanged();
                 break;
             case MOVED:
@@ -186,7 +187,7 @@ public class QueueFragment extends Fragment {
         Log.d(TAG, "onEventMainThread() called with DownloadEvent");
         DownloaderUpdate update = event.update;
         if (event.hasChangedFeedUpdateStatus(isUpdatingFeeds)) {
-            getActivity().invalidateOptionsMenu();
+            refreshToolbarState();
         }
         if (recyclerAdapter != null && update.mediaIds.length > 0) {
             for (long mediaId : update.mediaIds) {
@@ -216,7 +217,7 @@ public class QueueFragment extends Fragment {
     public void onPlayerStatusChanged(PlayerStatusEvent event) {
         loadItems(false);
         if (isUpdatingFeeds != updateRefreshMenuItemChecker.isRefreshing()) {
-            getActivity().supportInvalidateOptionsMenu();
+            refreshToolbarState();
         }
     }
 
@@ -225,7 +226,7 @@ public class QueueFragment extends Fragment {
         // Sent when playback position is reset
         loadItems(false);
         if (isUpdatingFeeds != updateRefreshMenuItemChecker.isRefreshing()) {
-            getActivity().supportInvalidateOptionsMenu();
+            refreshToolbarState();
         }
     }
 
@@ -242,116 +243,93 @@ public class QueueFragment extends Fragment {
     private final MenuItemUtils.UpdateRefreshMenuItemChecker updateRefreshMenuItemChecker =
             () -> DownloadService.isRunning && DownloadRequester.getInstance().isDownloadingFeeds();
 
-    @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        if(!isAdded()) {
-            return;
-        }
-        super.onCreateOptionsMenu(menu, inflater);
-        if (queue != null) {
-            inflater.inflate(R.menu.queue, menu);
-            MenuItemUtils.setupSearchItem(menu, (MainActivity) getActivity(), 0);
-            MenuItemUtils.refreshLockItem(getActivity(), menu);
+    private void refreshToolbarState() {
+        MenuItemUtils.refreshLockItem(getActivity(), toolbar.getMenu());
+        boolean keepSorted = UserPreferences.isQueueKeepSorted();
 
-            // Show Lock Item only if queue is sorted manually
-            boolean keepSorted = UserPreferences.isQueueKeepSorted();
-            MenuItem lockItem = menu.findItem(R.id.queue_lock);
-            lockItem.setVisible(!keepSorted);
-
-            // Random sort is not supported in keep sorted mode
-            MenuItem sortRandomItem = menu.findItem(R.id.queue_sort_random);
-            sortRandomItem.setVisible(!keepSorted);
-
-            // Set keep sorted checkbox
-            MenuItem keepSortedItem = menu.findItem(R.id.queue_keep_sorted);
-            keepSortedItem.setChecked(keepSorted);
-
-            isUpdatingFeeds = MenuItemUtils.updateRefreshMenuItem(menu, R.id.refresh_item, updateRefreshMenuItemChecker);
-        }
+        toolbar.getMenu().findItem(R.id.queue_sort_random).setVisible(!keepSorted);
+        toolbar.getMenu().findItem(R.id.queue_keep_sorted).setChecked(keepSorted);
+        isUpdatingFeeds = MenuItemUtils.updateRefreshMenuItem(toolbar.getMenu(),
+                R.id.refresh_item, updateRefreshMenuItemChecker);
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        if (!super.onOptionsItemSelected(item)) {
-            switch (item.getItemId()) {
-                case R.id.queue_lock:
-                    toggleQueueLock();
-                    return true;
-                case R.id.refresh_item:
-                    AutoUpdateManager.runImmediate(requireContext());
-                    return true;
-                case R.id.clear_queue:
-                    // make sure the user really wants to clear the queue
-                    ConfirmationDialog conDialog = new ConfirmationDialog(getActivity(),
-                            R.string.clear_queue_label,
-                            R.string.clear_queue_confirmation_msg) {
+    public boolean onMenuItemClick(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.queue_lock:
+                toggleQueueLock();
+                return true;
+            case R.id.refresh_item:
+                AutoUpdateManager.runImmediate(requireContext());
+                return true;
+            case R.id.clear_queue:
+                // make sure the user really wants to clear the queue
+                ConfirmationDialog conDialog = new ConfirmationDialog(getActivity(),
+                        R.string.clear_queue_label,
+                        R.string.clear_queue_confirmation_msg) {
 
-                        @Override
-                        public void onConfirmButtonPressed(
-                                DialogInterface dialog) {
-                            dialog.dismiss();
-                            DBWriter.clearQueue();
-                        }
-                    };
-                    conDialog.createNewDialog().show();
-                    return true;
-                case R.id.episode_actions:
-                    ((MainActivity) requireActivity()).loadChildFragment(
-                            EpisodesApplyActionFragment.newInstance(queue, ACTION_DELETE | ACTION_REMOVE_FROM_QUEUE  | ACTION_DOWNLOAD));
-                    return true;
-                case R.id.queue_sort_episode_title_asc:
-                    setSortOrder(SortOrder.EPISODE_TITLE_A_Z);
-                    return true;
-                case R.id.queue_sort_episode_title_desc:
-                    setSortOrder(SortOrder.EPISODE_TITLE_Z_A);
-                    return true;
-                case R.id.queue_sort_date_asc:
-                    setSortOrder(SortOrder.DATE_OLD_NEW);
-                    return true;
-                case R.id.queue_sort_date_desc:
-                    setSortOrder(SortOrder.DATE_NEW_OLD);
-                    return true;
-                case R.id.queue_sort_duration_asc:
-                    setSortOrder(SortOrder.DURATION_SHORT_LONG);
-                    return true;
-                case R.id.queue_sort_duration_desc:
-                    setSortOrder(SortOrder.DURATION_LONG_SHORT);
-                    return true;
-                case R.id.queue_sort_feed_title_asc:
-                    setSortOrder(SortOrder.FEED_TITLE_A_Z);
-                    return true;
-                case R.id.queue_sort_feed_title_desc:
-                    setSortOrder(SortOrder.FEED_TITLE_Z_A);
-                    return true;
-                case R.id.queue_sort_random:
-                    setSortOrder(SortOrder.RANDOM);
-                    return true;
-                case R.id.queue_sort_smart_shuffle_asc:
-                    setSortOrder(SortOrder.SMART_SHUFFLE_OLD_NEW);
-                    return true;
-                case R.id.queue_sort_smart_shuffle_desc:
-                    setSortOrder(SortOrder.SMART_SHUFFLE_NEW_OLD);
-                    return true;
-                case R.id.queue_keep_sorted:
-                    boolean keepSortedOld = UserPreferences.isQueueKeepSorted();
-                    boolean keepSortedNew = !keepSortedOld;
-                    UserPreferences.setQueueKeepSorted(keepSortedNew);
-                    if (keepSortedNew) {
-                        SortOrder sortOrder = UserPreferences.getQueueKeepSortedOrder();
-                        DBWriter.reorderQueue(sortOrder, true);
-                        if (recyclerAdapter != null) {
-                            recyclerAdapter.setLocked(true);
-                        }
-                    } else if (recyclerAdapter != null) {
-                        recyclerAdapter.setLocked(UserPreferences.isQueueLocked());
+                    @Override
+                    public void onConfirmButtonPressed(
+                            DialogInterface dialog) {
+                        dialog.dismiss();
+                        DBWriter.clearQueue();
                     }
-                    getActivity().invalidateOptionsMenu();
-                    return true;
-                default:
-                    return false;
-            }
-        } else {
-            return true;
+                };
+                conDialog.createNewDialog().show();
+                return true;
+            case R.id.episode_actions:
+                ((MainActivity) requireActivity()).loadChildFragment(
+                        EpisodesApplyActionFragment.newInstance(queue,
+                                ACTION_DELETE | ACTION_REMOVE_FROM_QUEUE  | ACTION_DOWNLOAD));
+                return true;
+            case R.id.queue_sort_episode_title_asc:
+                setSortOrder(SortOrder.EPISODE_TITLE_A_Z);
+                return true;
+            case R.id.queue_sort_episode_title_desc:
+                setSortOrder(SortOrder.EPISODE_TITLE_Z_A);
+                return true;
+            case R.id.queue_sort_date_asc:
+                setSortOrder(SortOrder.DATE_OLD_NEW);
+                return true;
+            case R.id.queue_sort_date_desc:
+                setSortOrder(SortOrder.DATE_NEW_OLD);
+                return true;
+            case R.id.queue_sort_duration_asc:
+                setSortOrder(SortOrder.DURATION_SHORT_LONG);
+                return true;
+            case R.id.queue_sort_duration_desc:
+                setSortOrder(SortOrder.DURATION_LONG_SHORT);
+                return true;
+            case R.id.queue_sort_feed_title_asc:
+                setSortOrder(SortOrder.FEED_TITLE_A_Z);
+                return true;
+            case R.id.queue_sort_feed_title_desc:
+                setSortOrder(SortOrder.FEED_TITLE_Z_A);
+                return true;
+            case R.id.queue_sort_random:
+                setSortOrder(SortOrder.RANDOM);
+                return true;
+            case R.id.queue_sort_smart_shuffle_asc:
+                setSortOrder(SortOrder.SMART_SHUFFLE_OLD_NEW);
+                return true;
+            case R.id.queue_sort_smart_shuffle_desc:
+                setSortOrder(SortOrder.SMART_SHUFFLE_NEW_OLD);
+                return true;
+            case R.id.queue_keep_sorted:
+                boolean keepSortedOld = UserPreferences.isQueueKeepSorted();
+                boolean keepSortedNew = !keepSortedOld;
+                UserPreferences.setQueueKeepSorted(keepSortedNew);
+                if (keepSortedNew) {
+                    SortOrder sortOrder = UserPreferences.getQueueKeepSortedOrder();
+                    DBWriter.reorderQueue(sortOrder, true);
+                }
+                if (recyclerAdapter != null) {
+                    recyclerAdapter.updateDragDropEnabled();
+                }
+                refreshToolbarState();
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -384,14 +362,16 @@ public class QueueFragment extends Fragment {
 
     private void setQueueLocked(boolean locked) {
         UserPreferences.setQueueLocked(locked);
-        getActivity().supportInvalidateOptionsMenu();
+        refreshToolbarState();
         if (recyclerAdapter != null) {
-            recyclerAdapter.setLocked(locked);
+            recyclerAdapter.updateDragDropEnabled();
         }
-        if (locked) {
-            ((MainActivity) getActivity()).showSnackbarAbovePlayer(R.string.queue_locked, Snackbar.LENGTH_SHORT);
-        } else {
-            ((MainActivity) getActivity()).showSnackbarAbovePlayer(R.string.queue_unlocked, Snackbar.LENGTH_SHORT);
+        if (queue.size() == 0) {
+            if (locked) {
+                ((MainActivity) getActivity()).showSnackbarAbovePlayer(R.string.queue_locked, Snackbar.LENGTH_SHORT);
+            } else {
+                ((MainActivity) getActivity()).showSnackbarAbovePlayer(R.string.queue_unlocked, Snackbar.LENGTH_SHORT);
+            }
         }
     }
 
@@ -408,7 +388,7 @@ public class QueueFragment extends Fragment {
     @Override
     public boolean onContextItemSelected(MenuItem item) {
         Log.d(TAG, "onContextItemSelected() called with: " + "item = [" + item + "]");
-        if(!isVisible()) {
+        if (!isVisible() || recyclerAdapter == null) {
             return false;
         }
         FeedItem selectedItem = recyclerAdapter.getSelectedItem();
@@ -444,7 +424,17 @@ public class QueueFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         super.onCreateView(inflater, container, savedInstanceState);
         View root = inflater.inflate(R.layout.queue_fragment, container, false);
-        ((AppCompatActivity) getActivity()).setSupportActionBar(root.findViewById(R.id.toolbar));
+        toolbar = root.findViewById(R.id.toolbar);
+        toolbar.setOnMenuItemClickListener(this);
+        displayUpArrow = getParentFragmentManager().getBackStackEntryCount() != 0;
+        if (savedInstanceState != null) {
+            displayUpArrow = savedInstanceState.getBoolean(KEY_UP_ARROW);
+        }
+        ((MainActivity) getActivity()).setupToolbarToggle(toolbar, displayUpArrow);
+        toolbar.inflateMenu(R.menu.queue);
+        MenuItemUtils.setupSearchItem(toolbar.getMenu(), (MainActivity) getActivity(), 0, "");
+        refreshToolbarState();
+
         infoBar = root.findViewById(R.id.info_bar);
         recyclerView = root.findViewById(R.id.recyclerView);
         RecyclerView.ItemAnimator animator = recyclerView.getItemAnimator();
@@ -453,6 +443,13 @@ public class QueueFragment extends Fragment {
         }
         recyclerView.setRecycledViewPool(((MainActivity) getActivity()).getRecycledViewPool());
         registerForContextMenu(recyclerView);
+
+        SwipeRefreshLayout swipeRefreshLayout = root.findViewById(R.id.swipeRefresh);
+        swipeRefreshLayout.setOnRefreshListener(() -> {
+            AutoUpdateManager.runImmediate(requireContext());
+            new Handler(Looper.getMainLooper()).postDelayed(() -> swipeRefreshLayout.setRefreshing(false),
+                    getResources().getInteger(R.integer.swipe_to_refresh_duration_in_ms));
+        });
 
         itemTouchHelper = new ItemTouchHelper(
             new ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN,
@@ -477,7 +474,7 @@ public class QueueFragment extends Fragment {
                     int from = viewHolder.getAdapterPosition();
                     int to = target.getAdapterPosition();
                     Log.d(TAG, "move(" + from + ", " + to + ") in memory");
-                    if (from >= queue.size() || to >= queue.size()) {
+                    if (from >= queue.size() || to >= queue.size() || from < 0 || to < 0) {
                         return false;
                     }
                     queue.add(to, queue.remove(from));
@@ -493,19 +490,13 @@ public class QueueFragment extends Fragment {
                     final int position = viewHolder.getAdapterPosition();
                     Log.d(TAG, "remove(" + position + ")");
                     final FeedItem item = queue.get(position);
-                    final boolean isRead = item.isPlayed();
-                    DBWriter.markItemPlayed(FeedItem.PLAYED, false, item.getId());
                     DBWriter.removeQueueItem(getActivity(), true, item);
 
                     ((MainActivity) getActivity()).showSnackbarAbovePlayer(
-                            item.hasMedia() ? R.string.marked_as_read_label : R.string.marked_as_read_no_media_label,
+                            getResources().getQuantityString(R.plurals.removed_from_queue_batch_label, 1, 1),
                             Snackbar.LENGTH_LONG)
-                            .setAction(getString(R.string.undo), v -> {
-                                DBWriter.addQueueItemAt(getActivity(), item.getId(), position, false);
-                                if (!isRead) {
-                                    DBWriter.markItemPlayed(FeedItem.UNPLAYED, item.getId());
-                                }
-                            });
+                            .setAction(getString(R.string.undo), v ->
+                                    DBWriter.addQueueItemAt(getActivity(), item.getId(), position, false));
                 }
 
                 @Override
@@ -540,7 +531,7 @@ public class QueueFragment extends Fragment {
 
         emptyView = new EmptyViewHandler(getContext());
         emptyView.attachToRecyclerView(recyclerView);
-        emptyView.setIcon(R.attr.stat_playlist);
+        emptyView.setIcon(R.drawable.ic_playlist);
         emptyView.setTitle(R.string.no_items_header_label);
         emptyView.setMessage(R.string.no_items_label);
 
@@ -548,6 +539,12 @@ public class QueueFragment extends Fragment {
         progLoading.setVisibility(View.VISIBLE);
 
         return root;
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putBoolean(KEY_UP_ARROW, displayUpArrow);
+        super.onSaveInstanceState(outState);
     }
 
     private void onFragmentLoaded(final boolean restoreScrollPosition) {
@@ -572,7 +569,7 @@ public class QueueFragment extends Fragment {
 
         // we need to refresh the options menu because it sometimes
         // needs data that may have just been loaded.
-        getActivity().supportInvalidateOptionsMenu();
+        refreshToolbarState();
 
         refreshInfoBar();
     }

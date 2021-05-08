@@ -27,8 +27,10 @@ import de.danoeh.antennapod.core.util.Converter;
 import de.danoeh.antennapod.core.feed.util.ImageResourceUtils;
 import de.danoeh.antennapod.core.util.TimeSpeedConverter;
 import de.danoeh.antennapod.core.util.gui.NotificationUtils;
-import de.danoeh.antennapod.core.util.playback.Playable;
+import de.danoeh.antennapod.model.playback.Playable;
 import java.util.ArrayList;
+import java.util.concurrent.ExecutionException;
+
 import org.apache.commons.lang3.ArrayUtils;
 
 public class PlaybackServiceNotificationBuilder {
@@ -69,15 +71,27 @@ public class PlaybackServiceNotificationBuilder {
     }
 
     public void loadIcon() {
-        int iconSize = context.getResources().getDimensionPixelSize(android.R.dimen.notification_large_icon_width);
+        int iconSize = (int) (128 * context.getResources().getDisplayMetrics().density);
         try {
             icon = Glide.with(context)
                     .asBitmap()
-                    .load(ImageResourceUtils.getImageLocation(playable))
+                    .load(playable.getImageLocation())
                     .apply(RequestOptions.diskCacheStrategyOf(ApGlideSettings.AP_DISK_CACHE_STRATEGY))
                     .apply(new RequestOptions().centerCrop())
                     .submit(iconSize, iconSize)
                     .get();
+        } catch (ExecutionException e) {
+            try {
+                icon = Glide.with(context)
+                        .asBitmap()
+                        .load(ImageResourceUtils.getFallbackImageLocation(playable))
+                        .apply(RequestOptions.diskCacheStrategyOf(ApGlideSettings.AP_DISK_CACHE_STRATEGY))
+                        .apply(new RequestOptions().centerCrop())
+                        .submit(iconSize, iconSize)
+                        .get();
+            } catch (Throwable tr) {
+                Log.e(TAG, "Error loading the media icon for the notification", tr);
+            }
         } catch (Throwable tr) {
             Log.e(TAG, "Error loading the media icon for the notification", tr);
         }
@@ -85,7 +99,7 @@ public class PlaybackServiceNotificationBuilder {
 
     private Bitmap getDefaultIcon() {
         if (defaultIcon == null) {
-            defaultIcon = getBitmap(context, R.drawable.notification_default_large_icon);
+            defaultIcon = getBitmap(context, R.mipmap.ic_launcher);
         }
         return defaultIcon;
     }
@@ -136,9 +150,10 @@ public class PlaybackServiceNotificationBuilder {
 
         notification.setContentIntent(getPlayerActivityPendingIntent());
         notification.setWhen(0);
-        notification.setSmallIcon(R.drawable.ic_antenna);
+        notification.setSmallIcon(R.drawable.ic_notification);
         notification.setOngoing(false);
         notification.setOnlyAlertOnce(true);
+        notification.setShowWhen(false);
         notification.setPriority(UserPreferences.getNotifyPriority());
         notification.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         notification.setColor(NotificationCompat.COLOR_DEFAULT);
@@ -183,15 +198,14 @@ public class PlaybackServiceNotificationBuilder {
             notification.addAction(R.drawable.ic_notification_pause, //pause action
                     context.getString(R.string.pause_label),
                     pauseButtonPendingIntent);
-            compactActionList.add(numActions++);
         } else {
             PendingIntent playButtonPendingIntent = getPendingIntentForMediaAction(
                     KeyEvent.KEYCODE_MEDIA_PLAY, numActions);
             notification.addAction(R.drawable.ic_notification_play, //play action
                     context.getString(R.string.play_label),
                     playButtonPendingIntent);
-            compactActionList.add(numActions++);
         }
+        compactActionList.add(numActions++);
 
         // ff follows play, then we have skip (if it's present)
         PendingIntent ffButtonPendingIntent = getPendingIntentForMediaAction(

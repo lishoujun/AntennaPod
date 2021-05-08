@@ -1,15 +1,22 @@
 package de.danoeh.antennapod.dialog;
 
 import android.content.Context;
-import androidx.appcompat.app.AlertDialog;
 import android.text.TextUtils;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
+
+import androidx.appcompat.app.AlertDialog;
 
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
 import de.danoeh.antennapod.R;
-import de.danoeh.antennapod.core.feed.FeedItemFilter;
+import de.danoeh.antennapod.model.feed.FeedItemFilter;
+import de.danoeh.antennapod.core.feed.FeedItemFilterGroup;
+import de.danoeh.antennapod.ui.common.RecursiveRadioGroup;
 
 public abstract class FilterDialog {
 
@@ -22,36 +29,47 @@ public abstract class FilterDialog {
     }
 
     public void openDialog() {
-        final String[] items = context.getResources().getStringArray(R.array.episode_filter_options);
-        final String[] values = context.getResources().getStringArray(R.array.episode_filter_values);
-        final boolean[] checkedItems = new boolean[items.length];
 
         final Set<String> filterValues = new HashSet<>(Arrays.asList(filter.getValues()));
-
-        // make sure we have no empty strings in the filter list
-        for (String filterValue : filterValues) {
-            if (TextUtils.isEmpty(filterValue)) {
-                filterValues.remove(filterValue);
-            }
-        }
-
-        for (int i = 0; i < values.length; i++) {
-            String value = values[i];
-            if (filterValues.contains(value)) {
-                checkedItems[i] = true;
-            }
-        }
-
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(R.string.filter);
-        builder.setMultiChoiceItems(items, checkedItems, (dialog, which, isChecked) -> {
-            if (isChecked) {
-                filterValues.add(values[which]);
-            } else {
-                filterValues.remove(values[which]);
+
+        LayoutInflater inflater = LayoutInflater.from(this.context);
+        View layout = inflater.inflate(R.layout.filter_dialog, null, false);
+        LinearLayout rows = layout.findViewById(R.id.filter_rows);
+        builder.setView(layout);
+
+        for (FeedItemFilterGroup item : FeedItemFilterGroup.values()) {
+            RecursiveRadioGroup row = (RecursiveRadioGroup) inflater.inflate(R.layout.filter_dialog_row, null, false);
+            RadioButton filter1 = row.findViewById(R.id.filter_dialog_radioButton1);
+            RadioButton filter2 = row.findViewById(R.id.filter_dialog_radioButton2);
+            filter1.setText(item.values[0].displayName);
+            filter1.setTag(item.values[0].filterId);
+            filter2.setText(item.values[1].displayName);
+            filter2.setTag(item.values[1].filterId);
+            rows.addView(row);
+        }
+
+        for (String filterId : filterValues) {
+            if (!TextUtils.isEmpty(filterId)) {
+                ((RadioButton) layout.findViewWithTag(filterId)).setChecked(true);
             }
-        });
+        }
+
         builder.setPositiveButton(R.string.confirm_label, (dialog, which) -> {
+            filterValues.clear();
+            for (int i = 0; i < rows.getChildCount(); i++) {
+                if (!(rows.getChildAt(i) instanceof RecursiveRadioGroup)) {
+                    continue;
+                }
+                RecursiveRadioGroup group = (RecursiveRadioGroup) rows.getChildAt(i);
+                if (group.getCheckedButton() != null) {
+                    String tag = (String) group.getCheckedButton().getTag();
+                    if (tag != null) { // Clear buttons use no tag
+                        filterValues.add((String) group.getCheckedButton().getTag());
+                    }
+                }
+            }
             updateFilter(filterValues);
         });
         builder.setNegativeButton(R.string.cancel_label, null);

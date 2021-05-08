@@ -8,7 +8,7 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
@@ -18,44 +18,51 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
 import de.danoeh.antennapod.R;
+import de.danoeh.antennapod.activity.MainActivity;
 
 /**
- * Shows the CompletedDownloadsFragment and the RunningDownloadsFragment
+ * Shows the CompletedDownloadsFragment and the RunningDownloadsFragment.
  */
-public class DownloadsFragment extends Fragment {
+public class DownloadsFragment extends PagedToolbarFragment {
 
     public static final String TAG = "DownloadsFragment";
 
     public static final String ARG_SELECTED_TAB = "selected_tab";
-
-    public static final int POS_RUNNING = 0;
-    private static final int POS_COMPLETED = 1;
-    public static final int POS_LOG = 2;
-    private static final int TOTAL_COUNT = 3;
-
     private static final String PREF_LAST_TAB_POSITION = "tab_position";
+    private static final String KEY_UP_ARROW = "up_arrow";
+
+    private static final int POS_COMPLETED = 0;
+    public static final int POS_LOG = 1;
+    private static final int TOTAL_COUNT = 2;
 
     private ViewPager2 viewPager;
     private TabLayout tabLayout;
+    private boolean displayUpArrow;
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater,
+                             @Nullable ViewGroup container,
+                             @Nullable Bundle savedInstanceState) {
         super.onCreateView(inflater, container, savedInstanceState);
         View root = inflater.inflate(R.layout.pager_fragment, container, false);
         Toolbar toolbar = root.findViewById(R.id.toolbar);
         toolbar.setTitle(R.string.downloads_label);
-        ((AppCompatActivity) getActivity()).setSupportActionBar(toolbar);
+        toolbar.inflateMenu(R.menu.downloads);
+        displayUpArrow = getParentFragmentManager().getBackStackEntryCount() != 0;
+        if (savedInstanceState != null) {
+            displayUpArrow = savedInstanceState.getBoolean(KEY_UP_ARROW);
+        }
+        ((MainActivity) getActivity()).setupToolbarToggle(toolbar, displayUpArrow);
 
         viewPager = root.findViewById(R.id.viewpager);
         viewPager.setAdapter(new DownloadsPagerAdapter(this));
+        viewPager.setOffscreenPageLimit(2);
+        super.setupPagedToolbar(toolbar, viewPager);
 
         // Give the TabLayout the ViewPager
         tabLayout = root.findViewById(R.id.sliding_tabs);
         new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
             switch (position) {
-                case POS_RUNNING:
-                    tab.setText(R.string.downloads_running_label);
-                    break;
                 case POS_COMPLETED:
                     tab.setText(R.string.downloads_completed_label);
                     break;
@@ -76,7 +83,13 @@ public class DownloadsFragment extends Fragment {
     }
 
     @Override
-    public void onViewCreated(View view, Bundle savedInstanceState) {
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putBoolean(KEY_UP_ARROW, displayUpArrow);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         if (getArguments() != null) {
             int tab = getArguments().getInt(ARG_SELECTED_TAB);
@@ -104,8 +117,6 @@ public class DownloadsFragment extends Fragment {
         @Override
         public Fragment createFragment(int position) {
             switch (position) {
-                case POS_RUNNING:
-                    return new RunningDownloadsFragment();
                 case POS_COMPLETED:
                     return new CompletedDownloadsFragment();
                 default:

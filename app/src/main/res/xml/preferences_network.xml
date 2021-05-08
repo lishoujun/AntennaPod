@@ -6,8 +6,8 @@
     <PreferenceCategory android:title="@string/automation">
         <Preference
                 android:key="prefAutoUpdateIntervall"
-                android:summary="@string/pref_autoUpdateIntervallOrTime_sum"
-                android:title="@string/pref_autoUpdateIntervallOrTime_title"/>
+                android:summary="@string/feed_refresh_sum"
+                android:title="@string/feed_refresh_title"/>
         <Preference
                 android:summary="@string/pref_automatic_download_sum"
                 android:key="prefAutoDownloadSettings"
@@ -29,18 +29,6 @@
                 numberpicker:maxValue="50"
                 android:key="prefParallelDownloads"
                 android:title="@string/pref_parallel_downloads_title"/>
-        <SwitchPreference
-                android:defaultValue="true"
-                android:enabled="true"
-                android:key="prefShowDownloadReport"
-                android:summary="@string/pref_showDownloadReport_sum"
-                android:title="@string/pref_showDownloadReport_title"/>
-        <SwitchPreference
-                android:defaultValue="false"
-                android:enabled="true"
-                android:key="prefShowAutoDownloadReport"
-                android:summary="@string/pref_showAutoDownloadReport_sum"
-                android:title="@string/pref_showAutoDownloadReport_title"/>
         <Preference
                 android:key="prefProxy"
                 android:summary="@string/pref_proxy_sum"

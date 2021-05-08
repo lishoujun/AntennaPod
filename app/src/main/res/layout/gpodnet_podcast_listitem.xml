@@ -23,7 +23,7 @@
             android:importantForAccessibility="no"
             android:cropToPadding="true"
             android:scaleType="fitXY"
-            tools:src="@drawable/ic_antenna"
+            tools:src="@tools:sample/avatars"
             tools:background="@android:color/holo_green_dark"/>
 
 
@@ -65,7 +65,7 @@
             <ImageView
                     android:layout_width="14sp"
                     android:layout_height="14sp"
-                    app:srcCompat="?attr/feed"/>
+                    app:srcCompat="@drawable/ic_feed"/>
             <TextView
                     android:id="@+id/txtvSubscribers"
                     style="@style/AntennaPod.TextView.ListItemSecondaryTitle"

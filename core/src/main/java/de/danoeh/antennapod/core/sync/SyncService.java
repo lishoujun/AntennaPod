@@ -21,9 +21,9 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 import de.danoeh.antennapod.core.R;
 import de.danoeh.antennapod.core.event.SyncServiceEvent;
-import de.danoeh.antennapod.core.feed.Feed;
-import de.danoeh.antennapod.core.feed.FeedItem;
-import de.danoeh.antennapod.core.feed.FeedMedia;
+import de.danoeh.antennapod.model.feed.Feed;
+import de.danoeh.antennapod.model.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.core.preferences.GpodnetPreferences;
 import de.danoeh.antennapod.core.preferences.UserPreferences;
 import de.danoeh.antennapod.core.service.download.AntennapodHttpClient;
@@ -32,15 +32,17 @@ import de.danoeh.antennapod.core.storage.DBTasks;
 import de.danoeh.antennapod.core.storage.DBWriter;
 import de.danoeh.antennapod.core.storage.DownloadRequestException;
 import de.danoeh.antennapod.core.storage.DownloadRequester;
-import de.danoeh.antennapod.core.sync.gpoddernet.GpodnetService;
-import de.danoeh.antennapod.core.sync.model.EpisodeAction;
-import de.danoeh.antennapod.core.sync.model.EpisodeActionChanges;
-import de.danoeh.antennapod.core.sync.model.ISyncService;
-import de.danoeh.antennapod.core.sync.model.SubscriptionChanges;
-import de.danoeh.antennapod.core.sync.model.SyncServiceException;
-import de.danoeh.antennapod.core.sync.model.UploadChangesResponse;
+import de.danoeh.antennapod.core.util.FeedItemUtil;
+import de.danoeh.antennapod.core.util.LongList;
 import de.danoeh.antennapod.core.util.URLChecker;
 import de.danoeh.antennapod.core.util.gui.NotificationUtils;
+import de.danoeh.antennapod.net.sync.gpoddernet.GpodnetService;
+import de.danoeh.antennapod.net.sync.model.EpisodeAction;
+import de.danoeh.antennapod.net.sync.model.EpisodeActionChanges;
+import de.danoeh.antennapod.net.sync.model.ISyncService;
+import de.danoeh.antennapod.net.sync.model.SubscriptionChanges;
+import de.danoeh.antennapod.net.sync.model.SyncServiceException;
+import de.danoeh.antennapod.net.sync.model.UploadChangesResponse;
 import io.reactivex.Completable;
 import io.reactivex.schedulers.Schedulers;
 import org.apache.commons.lang3.StringUtils;
@@ -79,7 +81,9 @@ public class SyncService extends Worker {
         if (!GpodnetPreferences.loggedIn()) {
             return Result.success();
         }
-        syncServiceImpl = new GpodnetService(AntennapodHttpClient.getHttpClient(), GpodnetService.DEFAULT_BASE_HOST);
+        syncServiceImpl = new GpodnetService(AntennapodHttpClient.getHttpClient(),
+                GpodnetPreferences.getHosturl(), GpodnetPreferences.getDeviceID(),
+                GpodnetPreferences.getUsername(), GpodnetPreferences.getPassword());
         SharedPreferences.Editor prefs = getApplicationContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
                 .edit();
         prefs.putLong(PREF_LAST_SYNC_ATTEMPT_TIMESTAMP, System.currentTimeMillis()).apply();
@@ -169,6 +173,25 @@ public class SyncService extends Worker {
             }
             sync(context);
         });
+    }
+
+    public static void enqueueEpisodePlayed(Context context, FeedMedia media, boolean completed) {
+        if (!GpodnetPreferences.loggedIn()) {
+            return;
+        }
+        if (media.getItem() == null) {
+            return;
+        }
+        if (media.getStartPosition() < 0 || (!completed && media.getStartPosition() >= media.getPosition())) {
+            return;
+        }
+        EpisodeAction action = new EpisodeAction.Builder(media.getItem(), EpisodeAction.PLAY)
+                .currentTimestamp()
+                .started(media.getStartPosition() / 1000)
+                .position((completed ? media.getDuration() : media.getPosition()) / 1000)
+                .total(media.getDuration() / 1000)
+                .build();
+        SyncService.enqueueEpisodeAction(context, action);
     }
 
     public static void sync(Context context) {
@@ -456,7 +479,7 @@ public class SyncService extends Worker {
                     break;
             }
         }
-
+        LongList queueToBeRemoved = new LongList();
         List<FeedItem> updatedItems = new ArrayList<>();
         for (EpisodeAction action : mostRecentPlayAction.values()) {
             FeedItem playItem = DBReader.getFeedItemByUrl(action.getPodcast(), action.getEpisode());
@@ -464,13 +487,16 @@ public class SyncService extends Worker {
             if (playItem != null) {
                 FeedMedia media = playItem.getMedia();
                 media.setPosition(action.getPosition() * 1000);
-                if (playItem.getMedia().hasAlmostEnded()) {
+                if (FeedItemUtil.hasAlmostEnded(playItem.getMedia())) {
                     Log.d(TAG, "Marking as played");
                     playItem.setPlayed(true);
+                    queueToBeRemoved.add(playItem.getId());
                 }
                 updatedItems.add(playItem);
             }
         }
+        DBWriter.removeQueueItem(getApplicationContext(), false, queueToBeRemoved.toArray());
+        DBReader.loadAdditionalFeedItemListData(updatedItems);
         DBWriter.setItemList(updatedItems);
     }
 
@@ -482,7 +508,11 @@ public class SyncService extends Worker {
     }
 
     private void updateErrorNotification(SyncServiceException exception) {
-        Log.d(TAG, "Posting error notification");
+        if (!UserPreferences.gpodnetNotificationsEnabled()) {
+            Log.d(TAG, "Skipping sync error notification because of user setting");
+            return;
+        }
+        Log.d(TAG, "Posting sync error notification");
         final String description = getApplicationContext().getString(R.string.gpodnetsync_error_descr)
                 + exception.getMessage();
 
@@ -491,7 +521,7 @@ public class SyncService extends Worker {
         PendingIntent pendingIntent = PendingIntent.getActivity(getApplicationContext(),
                 R.id.pending_intent_sync_error, intent, PendingIntent.FLAG_UPDATE_CURRENT);
         Notification notification = new NotificationCompat.Builder(getApplicationContext(),
-                NotificationUtils.CHANNEL_ID_ERROR)
+                NotificationUtils.CHANNEL_ID_SYNC_ERROR)
                 .setContentTitle(getApplicationContext().getString(R.string.gpodnetsync_error_title))
                 .setContentText(description)
                 .setContentIntent(pendingIntent)

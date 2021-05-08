@@ -4,6 +4,7 @@ import android.text.TextUtils;
 
 import androidx.annotation.VisibleForTesting;
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.UnsupportedEncodingException;
 import java.security.NoSuchAlgorithmException;
@@ -12,7 +13,7 @@ import java.security.NoSuchAlgorithmException;
 /** Generates valid filenames for a given string. */
 public class FileNameGenerator {
     @VisibleForTesting
-    public static final int MAX_FILENAME_LENGTH = 255; // Limited by ext4
+    public static final int MAX_FILENAME_LENGTH = 242; // limited by CircleCI
     private static final int MD5_HEX_LENGTH = 32;
 
     private static final char[] validChars =
@@ -29,6 +30,7 @@ public class FileNameGenerator {
      * characters of the given string.
      */
     public static String generateFileName(String string) {
+        string = StringUtils.stripAccents(string);
         StringBuilder buf = new StringBuilder();
         for (int i = 0; i < string.length(); i++) {
             char c = string.charAt(i);

@@ -5,6 +5,8 @@
         xmlns:app="http://schemas.android.com/apk/res-auto"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:id="@+id/headerContainer"
+        android:paddingHorizontal="@dimen/additional_horizontal_spacing"
         android:orientation="vertical">
 
     <LinearLayout
@@ -22,7 +24,7 @@
                 android:layout_marginRight="16dp"
                 android:layout_marginEnd="16dp"
                 android:importantForAccessibility="no"
-                tools:src="@drawable/ic_antenna"
+                tools:src="@tools:sample/avatars"
                 tools:background="@android:color/holo_green_dark"/>
 
         <LinearLayout
@@ -92,17 +94,6 @@
 
     </LinearLayout>
 
-    <TextView
-            android:id="@+id/txtvInformation"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="2dp"
-            android:background="?android:attr/windowBackground"
-            android:visibility="gone"
-            android:gravity="center"
-            tools:visibility="visible"
-            tools:text="(i) Information"/>
-
     <com.joanzapata.iconify.widget.IconTextView
             android:id="@+id/txtvFailure"
             android:layout_width="match_parent"
@@ -115,4 +106,26 @@
             android:text="@string/refresh_failed_msg"
             tools:visibility="visible"
             tools:text="(!) Last refresh failed"/>
+
+    <TextView
+            android:id="@+id/txtvInformation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="2dp"
+            android:background="?android:attr/windowBackground"
+            android:visibility="gone"
+            android:gravity="center"
+            tools:visibility="visible"
+            tools:text="(i) Information"/>
+
+    <TextView
+            android:id="@+id/txtvUpdatesDisabled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="2dp"
+            android:background="?android:attr/windowBackground"
+            android:visibility="gone"
+            android:gravity="center"
+            tools:visibility="visible"
+            tools:text="Updates disabled"/>
 </LinearLayout>

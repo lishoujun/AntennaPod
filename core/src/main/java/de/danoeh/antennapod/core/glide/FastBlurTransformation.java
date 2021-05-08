@@ -8,6 +8,7 @@ import android.util.Log;
 import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPool;
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation;
 
+import java.nio.charset.Charset;
 import java.security.MessageDigest;
 
 public class FastBlurTransformation extends BitmapTransformation {
@@ -21,7 +22,10 @@ public class FastBlurTransformation extends BitmapTransformation {
     }
 
     @Override
-    protected Bitmap transform(BitmapPool pool, Bitmap source, int outWidth, int outHeight) {
+    protected Bitmap transform(@NonNull BitmapPool pool,
+                               @NonNull Bitmap source,
+                               int outWidth,
+                               int outHeight) {
         int targetWidth = outWidth / 3;
         int targetHeight = (int) (1.0 * outHeight * targetWidth / outWidth);
         Bitmap resized = ThumbnailUtils.extractThumbnail(source, targetWidth, targetHeight);
@@ -40,7 +44,7 @@ public class FastBlurTransformation extends BitmapTransformation {
 
     @Override
     public void updateDiskCacheKey(@NonNull MessageDigest messageDigest) {
-        messageDigest.update(TAG.getBytes());
+        messageDigest.update(TAG.getBytes(Charset.defaultCharset()));
     }
 
     private static Bitmap fastBlur(Bitmap bitmap, int radius) {

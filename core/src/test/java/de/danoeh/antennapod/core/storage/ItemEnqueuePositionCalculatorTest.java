@@ -1,5 +1,6 @@
 package de.danoeh.antennapod.core.storage;
 
+import de.danoeh.antennapod.model.playback.RemoteMedia;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -13,13 +14,12 @@ import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import de.danoeh.antennapod.core.feed.FeedItem;
-import de.danoeh.antennapod.core.feed.FeedMedia;
+import de.danoeh.antennapod.model.feed.FeedComponent;
+import de.danoeh.antennapod.model.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.core.feed.FeedMother;
-import de.danoeh.antennapod.core.feed.MediaType;
 import de.danoeh.antennapod.core.preferences.UserPreferences.EnqueueLocation;
-import de.danoeh.antennapod.core.util.playback.ExternalMedia;
-import de.danoeh.antennapod.core.util.playback.Playable;
+import de.danoeh.antennapod.model.playback.Playable;
 
 import static de.danoeh.antennapod.core.preferences.UserPreferences.EnqueueLocation.AFTER_CURRENTLY_PLAYING;
 import static de.danoeh.antennapod.core.preferences.UserPreferences.EnqueueLocation.BACK;
@@ -27,10 +27,11 @@ import static de.danoeh.antennapod.core.preferences.UserPreferences.EnqueueLocat
 import static de.danoeh.antennapod.core.util.CollectionTestUtil.concat;
 import static de.danoeh.antennapod.core.util.CollectionTestUtil.list;
 import static de.danoeh.antennapod.core.util.FeedItemUtil.getIdList;
+import static java.util.Collections.emptyList;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.stub;
+import static org.mockito.Mockito.when;
 
 public class ItemEnqueuePositionCalculatorTest {
 
@@ -103,7 +104,7 @@ public class ItemEnqueuePositionCalculatorTest {
                     {"case option after currently playing, no currentlyPlaying is null",
                             concat(TFI_ID, QUEUE_DEFAULT_IDS),
                             AFTER_CURRENTLY_PLAYING, QUEUE_DEFAULT, ID_CURRENTLY_PLAYING_NULL},
-                    {"case option after currently playing, currentlyPlaying is externalMedia",
+                    {"case option after currently playing, currentlyPlaying is not a feedMedia",
                             concat(TFI_ID, QUEUE_DEFAULT_IDS),
                             AFTER_CURRENTLY_PLAYING, QUEUE_DEFAULT, ID_CURRENTLY_PLAYING_NOT_FEEDMEDIA},
                     {"case empty queue, option after currently playing",
@@ -187,7 +188,7 @@ public class ItemEnqueuePositionCalculatorTest {
             //
             ItemEnqueuePositionCalculator calculator = new ItemEnqueuePositionCalculator(options);
             DownloadStateProvider stubDownloadStateProvider = mock(DownloadStateProvider.class);
-            stub(stubDownloadStateProvider.isDownloadingFile(any(FeedMedia.class))).toReturn(false);
+            when(stubDownloadStateProvider.isDownloadingFile(any(FeedMedia.class))).thenReturn(false);
             calculator.downloadStateProvider = stubDownloadStateProvider;
 
             // Setup initial data
@@ -230,7 +231,7 @@ public class ItemEnqueuePositionCalculatorTest {
 
         private static FeedItem setAsDownloading(FeedItem item, DownloadStateProvider stubDownloadStateProvider,
                                                  boolean isDownloading) {
-            stub(stubDownloadStateProvider.isDownloadingFile(item.getMedia())).toReturn(isDownloading);
+            when(stubDownloadStateProvider.isDownloadingFile(item.getMedia())).thenReturn(isDownloading);
             return item;
         }
 
@@ -248,13 +249,13 @@ public class ItemEnqueuePositionCalculatorTest {
         assertEquals(message, idsExpected, getIdList(queue));
     }
 
-    static final List<FeedItem> QUEUE_EMPTY = Collections.unmodifiableList(Arrays.asList());
+    static final List<FeedItem> QUEUE_EMPTY = Collections.unmodifiableList(emptyList());
 
     static final List<FeedItem> QUEUE_DEFAULT = 
             Collections.unmodifiableList(Arrays.asList(
                     createFeedItem(11), createFeedItem(12), createFeedItem(13), createFeedItem(14)));
     static final List<Long> QUEUE_DEFAULT_IDS =
-            QUEUE_DEFAULT.stream().map(fi -> fi.getId()).collect(Collectors.toList());
+            QUEUE_DEFAULT.stream().map(FeedComponent::getId).collect(Collectors.toList());
 
 
     static Playable getCurrentlyPlaying(long idCurrentlyPlaying) {
@@ -268,7 +269,7 @@ public class ItemEnqueuePositionCalculatorTest {
     }
 
     static Playable externalMedia() {
-        return new ExternalMedia("http://example.com/episode.mp3", MediaType.AUDIO);
+        return new RemoteMedia(createFeedItem(0));
     }
 
     static final long ID_CURRENTLY_PLAYING_NULL = -1L;

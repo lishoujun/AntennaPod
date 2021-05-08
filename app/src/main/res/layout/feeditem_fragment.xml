@@ -126,7 +126,7 @@
                     android:layout_marginEnd="8dp"
                     android:layout_marginTop="12dp"
                     android:layout_marginBottom="12dp"
-                    tools:src="@drawable/ic_settings_black" />
+                    tools:src="@drawable/ic_settings" />
 
                 <TextView
                     android:textAppearance="@style/TextAppearance.AppCompat.Button"
@@ -154,7 +154,7 @@
                     android:layout_marginEnd="8dp"
                     android:layout_marginTop="12dp"
                     android:layout_marginBottom="12dp"
-                    tools:src="@drawable/ic_settings_black" />
+                    tools:src="@drawable/ic_settings" />
 
                 <TextView
                     android:textAppearance="@style/TextAppearance.AppCompat.Button"
@@ -165,6 +165,15 @@
                     tools:text="Button 2" />
             </LinearLayout>
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/noMediaLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:textAlignment="center"
+            android:background="?android:attr/dividerVertical"
+            android:text="@string/no_media_label"/>
 
         <View
             android:layout_width="match_parent"
